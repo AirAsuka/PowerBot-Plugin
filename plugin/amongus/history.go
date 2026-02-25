@@ -64,7 +64,7 @@ func init() {
 			nText := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
 			n, err := strconv.Atoi(nText)
 			if err != nil || n <= 0 || n > 10 {
-				ctx.SendChain(message.Text("参数错误：n必须是1到10之间的阿拉伯数字"))
+				ctx.SendChain(message.Text("参数错误：n必须是1到10之间"))
 				return
 			}
 
@@ -156,6 +156,7 @@ func formatRecentGames(amongusID string, games []recentGame) string {
 		}
 		sb.WriteString(fmt.Sprintf("| 游戏ID：%s | 开始时间：%s | 游戏时长：%s | 玩家数量：%d | 胜利信息：%s|\n",
 			game.GameID, game.StartTime, game.Duration, game.PlayerCount, winText))
+		sb.WriteString(fmt.Sprintf("======================================================\n")))
 	}
 	return strings.TrimSpace(sb.String())
 }
