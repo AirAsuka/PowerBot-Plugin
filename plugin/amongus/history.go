@@ -156,7 +156,7 @@ func formatRecentGames(amongusID string, games []recentGame) string {
 		}
 		sb.WriteString(fmt.Sprintf("| 游戏ID：%s | 开始时间：%s | 游戏时长：%s | 玩家数量：%d | 胜利信息：%s|\n",
 			game.GameID, game.StartTime, game.Duration, game.PlayerCount, winText))
-		sb.WriteString(fmt.Sprintf("======================================================\n")))
+		sb.WriteString("=================================\n")
 	}
 	return strings.TrimSpace(sb.String())
 }
