@@ -1,11 +1,14 @@
 package emojimix
 
 import (
-	"fmt"
-	"sort"
-	"sync"
-	"strconv"
-	"strings"
+    "encoding/json"
+    "fmt"
+    "os"
+    "path/filepath"
+    "sort"
+    "strconv"
+    "strings" // 必须有这个，否则 normalize 函数里的 strings.ReplaceAll 会报错
+    "sync"
 
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
