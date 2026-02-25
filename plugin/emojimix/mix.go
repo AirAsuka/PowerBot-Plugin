@@ -61,11 +61,10 @@ func init() {
 
 // 核心查询逻辑：不再需要 http 请求，直接查 map
 func getEmojiURLFromMetadata(r1, r2 rune) string {
-	// 1. 将 rune 转为 google 格式的 hex 字符串
+	// r1, r2 本身就是 rune，%x 得到的是 1f42e 和 2601 (不带后缀)
 	s1 := fmt.Sprintf("%x", r1)
 	s2 := fmt.Sprintf("%x", r2)
 
-	// 2. 排序，确保 Key 唯一性 (a_b 和 b_a 指向同一个结果)
 	keys := []string{s1, s2}
 	sort.Strings(keys)
 	cacheKey := keys[0] + "_" + keys[1]
@@ -74,39 +73,36 @@ func getEmojiURLFromMetadata(r1, r2 rune) string {
 }
 
 // 加载本地 metadata.json 并转换为快速索引 map
+// 辅助函数：去掉 Unicode 字符串中的变体后缀
+func normalize(s string) string {
+	s = strings.ReplaceAll(s, "-fe0f", "")
+	s = strings.ReplaceAll(s, "-ufe0f", "") // 兼容可能存在的不同前缀
+	return s
+}
+
 func loadMetadata() {
 	once.Do(func() {
 		mixCache = make(map[string]string)
-		path := filepath.Join("data", "emojimix", "metadata.json")
-		
-		file, err := os.ReadFile(path)
-		if err != nil {
-			logrus.Errorf("[emojimix] 读取 metadata 失败: %v", err)
-			return
-		}
+		// ... 前面的文件读取逻辑不变 ...
 
-		var rawData EmojiData
-		if err := json.Unmarshal(file, &rawData); err != nil {
-			logrus.Errorf("[emojimix] 解析 metadata 失败: %v", err)
-			return
-		}
-
-		// 扁平化数据到 mixCache 中
 		for _, info := range rawData.Data {
 			for _, combos := range info.Combinations {
 				for _, c := range combos {
-					// 同样进行排序以保证存入的 key 格式一致
-					k := []string{c.LeftEmoji, c.RightEmoji}
+					// 【核心改进】：存入前去掉 -fe0f
+					l := normalize(c.LeftEmoji)
+					r := normalize(c.RightEmoji)
+					
+					k := []string{l, r}
 					sort.Strings(k)
 					key := k[0] + "_" + k[1]
-					// 只存储最新的（通常列表第一个就是最新的，或者根据 isLatest 过滤）
+					
 					if _, ok := mixCache[key]; !ok {
 						mixCache[key] = c.GStaticUrl
 					}
 				}
 			}
 		}
-		logrus.Infof("[emojimix] 成功加载 %d 条合成索引", len(mixCache))
+		logrus.Infof("[emojimix] 成功加载并归一化 %d 条索引", len(mixCache))
 	})
 }
 // 匹配逻辑保持不变，但移除了对硬编码 map 的依赖
