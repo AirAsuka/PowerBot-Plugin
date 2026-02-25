@@ -130,24 +130,28 @@ func loadMetadata() {
 // 匹配逻辑保持不变，但移除了对硬编码 map 的依赖
 func match(ctx *zero.Ctx) bool {
 	var r []rune
+	// 获取原始 rune 数组
+	var rawRunes []rune
 	if len(ctx.Event.Message) == 2 {
 		r1 := face2emoji(ctx.Event.Message[0])
 		r2 := face2emoji(ctx.Event.Message[1])
-		if r1 != 0 && r2 != 0 {
-			r = []rune{r1, r2}
-		}
+		rawRunes = []rune{r1, r2}
 	} else {
-		tempR := []rune(ctx.Event.RawMessage)
-		if len(tempR) == 2 {
-			r = tempR
+		rawRunes = []rune(ctx.Event.RawMessage)
+	}
+
+	// 【关键修正】：过滤掉所有的 FE0F (Variation Selector-16)
+	filtered := make([]rune, 0, len(rawRunes))
+	for _, val := range rawRunes {
+		if val != 0 && val != 0xFE0F && val != 0xFE0E {
+			filtered = append(filtered, val)
 		}
 	}
 
-	if len(r) == 2 {
-		// 这里简单判断是否在常见的 Emoji Unicode 范围内
-		// 避免非表情字符触发大量网络请求
-		if isEmoji(r[0]) && isEmoji(r[1]) {
-			ctx.State["emojimix"] = r
+	// 过滤后必须刚好是 2 个 emoji
+	if len(filtered) == 2 {
+		if isEmoji(filtered[0]) && isEmoji(filtered[1]) {
+			ctx.State["emojimix"] = filtered
 			return true
 		}
 	}
@@ -162,13 +166,16 @@ func isEmoji(r rune) bool {
 func face2emoji(face message.Segment) rune {
     if face.Type == "text" {
         r := []rune(face.Data["text"])
-        if len(r) != 1 { return 0 }
-        return r[0]
+        // 同样过滤 text 里的后缀
+        if len(r) > 0 && r[0] != 0 {
+            return r[0] 
+        }
+        return 0
     }
     if face.Type != "face" { return 0 }
     id, _ := strconv.Atoi(face.Data["id"])
     if r, ok := message.Emoji[id]; ok {
-        return r
+        return r // 这里拿到的通常是基础码位
     }
     return 0
 }
