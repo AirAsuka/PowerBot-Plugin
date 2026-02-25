@@ -129,7 +129,6 @@ func loadMetadata() {
 }
 // 匹配逻辑保持不变，但移除了对硬编码 map 的依赖
 func match(ctx *zero.Ctx) bool {
-	var r []rune
 	// 获取原始 rune 数组
 	var rawRunes []rune
 	if len(ctx.Event.Message) == 2 {
