@@ -1,10 +1,7 @@
 package emojimix
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"sync"
 	"strconv"
@@ -80,31 +77,46 @@ func normalize(s string) string {
 	s = strings.ReplaceAll(s, "-ufe0f", "") // 兼容可能存在的不同前缀
 	return s
 }
-
 func loadMetadata() {
-	once.Do(func() {
-		mixCache = make(map[string]string)
-		// ... 前面的文件读取逻辑不变 ...
+    once.Do(func() {
+        mixCache = make(map[string]string)
+        path := filepath.Join("data", "emojimix", "metadata.json")
 
-		for _, info := range rawData.Data {
-			for _, combos := range info.Combinations {
-				for _, c := range combos {
-					// 【核心改进】：存入前去掉 -fe0f
-					l := normalize(c.LeftEmoji)
-					r := normalize(c.RightEmoji)
-					
-					k := []string{l, r}
-					sort.Strings(k)
-					key := k[0] + "_" + k[1]
-					
-					if _, ok := mixCache[key]; !ok {
-						mixCache[key] = c.GStaticUrl
-					}
-				}
-			}
-		}
-		logrus.Infof("[emojimix] 成功加载并归一化 %d 条索引", len(mixCache))
-	})
+        file, err := os.ReadFile(path)
+        if err != nil {
+            logrus.Errorf("[emojimix] 读取 metadata 失败: %v", err)
+            return
+        }
+
+        // --- 修复点在这里 ---
+        // 1. 先声明变量
+        var rawData EmojiData 
+        
+        // 2. 将文件内容解析到变量中
+        if err := json.Unmarshal(file, &rawData); err != nil {
+            logrus.Errorf("[emojimix] 解析 metadata 失败: %v", err)
+            return
+        }
+        // ------------------
+
+        // 此时 rawData 在当前作用域才有效
+        for _, info := range rawData.Data {
+            for _, combos := range info.Combinations {
+                for _, c := range combos {
+                    // 处理逻辑...
+                    l := normalize(c.LeftEmoji)
+                    r := normalize(c.RightEmoji)
+                    k := []string{l, r}
+                    sort.Strings(k)
+                    key := k[0] + "_" + k[1]
+                    if _, ok := mixCache[key]; !ok {
+                        mixCache[key] = c.GStaticUrl
+                    }
+                }
+            }
+        }
+        logrus.Infof("[emojimix] 成功加载 %d 条合成索引", len(mixCache))
+    })
 }
 // 匹配逻辑保持不变，但移除了对硬编码 map 的依赖
 func match(ctx *zero.Ctx) bool {
