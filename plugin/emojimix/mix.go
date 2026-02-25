@@ -7,7 +7,7 @@ import (
     "path/filepath"
     "sort"
     "strconv"
-    "strings" // 必须有这个，否则 normalize 函数里的 strings.ReplaceAll 会报错
+    "strings" 
     "sync"
 
 	ctrl "github.com/FloatTech/zbpctrl"
@@ -106,12 +106,18 @@ func loadMetadata() {
         for _, info := range rawData.Data {
             for _, combos := range info.Combinations {
                 for _, c := range combos {
-                    // 处理逻辑...
+                    // 1. 彻底归一化：去掉所有 -fe0f 和 -ufe0f
+                    // 因为用户输入的表情 rune 转 hex 永远不会带这些后缀
                     l := normalize(c.LeftEmoji)
                     r := normalize(c.RightEmoji)
+
+                    // 2. 排序，确保 key 唯一
                     k := []string{l, r}
                     sort.Strings(k)
                     key := k[0] + "_" + k[1]
+
+                    // 3. 存储
+                    // 如果存在多个日期的合成，我们倾向于保留最新的（通常 json 里靠前的较新）
                     if _, ok := mixCache[key]; !ok {
                         mixCache[key] = c.GStaticUrl
                     }
