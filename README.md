@@ -1265,22 +1265,6 @@ print("run[CQ:image,file="+j["img"]+"]")
 
 </details>
 <details>
-  <summary>qq空间表白墙</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/qzone"`
-
-  - [x] 登录QQ空间 (Cookie过期很快, 要经常登录)
-  
-  - [x] 发说说[xxx]
-  
-  - [x] (匿名)发表白墙[xxx]
-  
-  - [x] [ 同意 | 拒绝 ]表白墙 1,2,3 (最后一个参数是表白墙的序号数组, 用英文逗号连接)
-  
-  - [x] 查看[ 等待 | 同意 | 拒绝 | 所有 ]表白墙 0 (最后一个参数是页码, 建议私聊审稿)
-
-</details>
-<details>
   <summary>Real-CUGAN清晰术</summary>
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/realcugan"`
@@ -1534,39 +1518,6 @@ print("run[CQ:image,file="+j["img"]+"]")
   - [x] 查询鬼东西[序号][@xxx]
 
   - 注：由于需要科学，默认注释。
-
-</details>
-<details>
-  <summary>小红书文案</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/xhstext"`
-
-  - [x] 捧场
-
-  - [x] 有梗
-
-</details>
-<details>
-  <summary>游戏王白鸽API卡查</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/ygocdb"`
-
-  - [x] /ydp [xxx]
-  - [x] /yds [xxx]
-  - [x] /ydb [xxx]
-  - 注：[xxx]为搜索内容;p:返回一张图片;s:返回一张效果描述;b:高级搜索
-
-</details>
-<details>
-  <summary>游戏王集换社卡价查询</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/ygotrade"`
-
-  - [x] 查卡价 [卡名]
-  - [x] 查卡价 [卡名] -r [稀有度 稀有度 ...]
-  - [x] 查卡店  [卡名]
-  - [x] 查卡店  [卡名] -r [稀有度]
-  - 注：卡店只支持单个稀有度查询
 
 </details>
 <details>
