@@ -81,51 +81,45 @@ func normalize(s string) string {
 	return s
 }
 func loadMetadata() {
-    once.Do(func() {
-        mixCache = make(map[string]string)
-        path := filepath.Join("data", "emojimix", "metadata.json")
+	once.Do(func() {
+		mixCache = make(map[string]string)
+		path := filepath.Join("data", "emojimix", "metadata.json")
 
-        file, err := os.ReadFile(path)
-        if err != nil {
-            logrus.Errorf("[emojimix] 读取 metadata 失败: %v", err)
-            return
-        }
+		file, err := os.ReadFile(path)
+		if err != nil {
+			logrus.Errorf("[emojimix] 读取 metadata 失败: %v", err)
+			return
+		}
 
-        // --- 修复点在这里 ---
-        // 1. 先声明变量
-        var rawData EmojiData 
-        
-        // 2. 将文件内容解析到变量中
-        if err := json.Unmarshal(file, &rawData); err != nil {
-            logrus.Errorf("[emojimix] 解析 metadata 失败: %v", err)
-            return
-        }
-        // ------------------
+		var rawData EmojiData
+		if err := json.Unmarshal(file, &rawData); err != nil {
+			logrus.Errorf("[emojimix] 解析 metadata 失败: %v", err)
+			return
+		}
 
-        // 此时 rawData 在当前作用域才有效
-        for _, info := range rawData.Data {
-            for _, combos := range info.Combinations {
-                for _, c := range combos {
-                    // 1. 彻底归一化：去掉所有 -fe0f 和 -ufe0f
-                    // 因为用户输入的表情 rune 转 hex 永远不会带这些后缀
-                    l := normalize(c.LeftEmoji)
-                    r := normalize(c.RightEmoji)
-
-                    // 2. 排序，确保 key 唯一
-                    k := []string{l, r}
-                    sort.Strings(k)
-                    key := k[0] + "_" + k[1]
-
-                    // 3. 存储
-                    // 如果存在多个日期的合成，我们倾向于保留最新的（通常 json 里靠前的较新）
-                    if _, ok := mixCache[key]; !ok {
-                        mixCache[key] = c.GStaticUrl
-                    }
-                }
-            }
-        }
-        logrus.Infof("[emojimix] 成功加载 %d 条合成索引", len(mixCache))
-    })
+		// 遍历外层 Data (例如 "1f42e")
+		for rootHex, info := range rawData.Data {
+			rootClean := normalize(rootHex)
+			
+			// 遍历内层 Combinations (例如 "2601-fe0f")
+			for comboHex, combos := range info.Combinations {
+				comboClean := normalize(comboHex)
+				
+				// 只要有 URL，我们就根据这两个 Key 生成索引
+				if len(combos) > 0 {
+					// 排序以确保 A_B 和 B_A 都能搜到
+					k := []string{rootClean, comboClean}
+					sort.Strings(k)
+					key := k[0] + "_" + k[1]
+					
+					if _, ok := mixCache[key]; !ok {
+						mixCache[key] = combos[0].GStaticUrl
+					}
+				}
+			}
+		}
+		logrus.Infof("[emojimix] 成功加载 %d 条全向索引", len(mixCache))
+	})
 }
 // 匹配逻辑保持不变，但移除了对硬编码 map 的依赖
 func match(ctx *zero.Ctx) bool {
