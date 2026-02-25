@@ -136,6 +136,7 @@ func init() {
 			// 构建文本
 			var sb strings.Builder
 			sb.WriteString("══ Among Us 战绩 ══\n\n")
+			sb.WriteString(fmt.Sprintf("  玩家ID:        %s\n", user.AmongusID))
 			sb.WriteString(fmt.Sprintf("  总场次:        %d\n", totalMatches))
 			sb.WriteString(fmt.Sprintf("  总胜率:        %.2f%%\n", winRate))
 			sb.WriteString(fmt.Sprintf("  平均击杀:      %.2f\n", averageKills))
