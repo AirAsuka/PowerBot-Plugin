@@ -16,7 +16,7 @@ import (
 
 // 常用日期列表，按更新频率排列，涵盖了绝大多数合成表情
 // var commonDates = []int64{20201001, 20210218, 20210521, 20210831, 20211115, 20220110, 20220224}
-var commonDates = []int64{20230803, 20230301, 20220224, 20211115, 20210831, 20210521, 20210218, 20201001}
+var commonDates = []int64{20240206, 20230803, 20230301, 20220224, 20211115, 20210831, 20210521, 20210218, 20201001}
 
 const bed = "https://www.gstatic.com/android/keyboard/emojikitchen/%d/u%x/u%x_u%x.png"
 
@@ -42,56 +42,46 @@ func init() {
 		})
 }
 func getEmojiMixURL(r1, r2 rune) string {
-    // 1. 专门处理需要 -ufe0f 后缀的特殊表情
-    // Emoji Kitchen 要求这些字符在文件名部分必须带后缀
-    formatHex := func(r rune) string {
-        h := fmt.Sprintf("%x", r)
-        // 常见需要加 -ufe0f 的 Unicode 范围或特定字符
-        // 2665 = ❤️, 2b50 = ⭐, 263a = ☺️ 等
-        if r == 0x2665 || r == 0x2b50 || r == 0x263a || r == 0x2764 {
-            return h + "-ufe0f"
-        }
-        return h
-    }
+	// 1. 核心格式化函数
+	// Google 要求：文件夹名和文件名中的 u 后面，4位码要补齐，5位码保持原样
+	toGoogleStr := func(r rune, isFileName bool) string {
+		h := fmt.Sprintf("%x", r)
+		// 如果是 4 位及以下，通常补齐到 4 位（使用 %04x）
+		if r < 0x10000 {
+			h = fmt.Sprintf("%04x", r)
+			// 文件名部分针对特殊符号添加变体选择符
+			if isFileName && (r == 0x2665 || r == 0x2b50 || r == 0x263a || r == 0x2764) {
+				h += "-ufe0f"
+			}
+		}
+		return h
+	}
 
-    s1 := formatHex(r1)
-    s2 := formatHex(r2)
+	// 准备两种顺序的参数
+	// trial: {文件夹名, 左文件名, 右文件名}
+	trials := [][]string{
+		{toGoogleStr(r1, false), toGoogleStr(r1, true), toGoogleStr(r2, true)},
+		{toGoogleStr(r2, false), toGoogleStr(r2, true), toGoogleStr(r1, true)},
+	}
 
-    // 2. 构造尝试序列
-    // Google 的 URL 结构：.../date/u{r1}/u{r1}_u{s2}.png
-    // 注意：文件夹名通常只用基础码(%x)，文件名部分可能包含后缀(%s)
-    type trial struct {
-        folder rune
-        left   rune
-        right  string
-    }
+	client := &http.Client{Timeout: 2 * time.Second}
 
-    // 尝试两种组合顺序：r1+r2 和 r2+r1
-    trials := []trial{
-        {r1, r1, s2},
-        {r2, r2, s1},
-    }
+	for _, date := range commonDates {
+		for _, t := range trials {
+			// 路径模版：.../日期/u文件夹/u左文件名_u右文件名.png
+			testURL := fmt.Sprintf("https://www.gstatic.com/android/keyboard/emojikitchen/%d/u%s/u%s_u%s.png",
+				date, t[0], t[1], t[2])
 
-    client := &http.Client{
-        Timeout: 2 * time.Second, // 设置超时防止卡死
-    }
-
-    for _, date := range commonDates {
-        for _, t := range trials {
-            // 注意这里最后的 %s，因为 s2 可能带 -ufe0f
-            testURL := fmt.Sprintf("https://www.gstatic.com/android/keyboard/emojikitchen/%d/u%x/u%x_u%s.png",
-                date, t.folder, t.left, t.right)
-
-            resp, err := client.Head(testURL)
-            if err == nil {
-                resp.Body.Close()
-                if resp.StatusCode == http.StatusOK {
-                    return testURL
-                }
-            }
-        }
-    }
-    return ""
+			resp, err := client.Head(testURL)
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					return testURL
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // 匹配逻辑保持不变，但移除了对硬编码 map 的依赖
