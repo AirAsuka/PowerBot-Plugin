@@ -1,10 +1,12 @@
 package emojimix
 
 import (
+	"encoding/json"
 	"fmt"
-	"net/http"
-	"strconv"
-	"time"
+	"os"
+	"path/filepath"
+	"sort"
+	"sync"
 
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
@@ -14,13 +16,31 @@ import (
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
-// 常用日期列表，按更新频率排列，涵盖了绝大多数合成表情
-// var commonDates = []int64{20201001, 20210218, 20210521, 20210831, 20211115, 20220110, 20220224}
-var commonDates = []int64{20240206, 20230803, 20230301, 20220224, 20211115, 20210831, 20210521, 20210218, 20201001}
+// Metadata 结构体定义
+type EmojiData struct {
+	Data map[string]EmojiInfo `json:"data"`
+}
 
-const bed = "https://www.gstatic.com/android/keyboard/emojikitchen/%d/u%x/u%x_u%x.png"
+type EmojiInfo struct {
+	Combinations map[string][]Combination `json:"combinations"`
+}
+
+type Combination struct {
+	GStaticUrl string `json:"gStaticUrl"`
+	LeftEmoji  string `json:"leftEmojiCodepoint"`
+	RightEmoji string `json:"rightEmojiCodepoint"`
+}
+
+var (
+	// 内存索引：key 为 "unicode1_unicode2" (从小到大排序)，value 为 URL
+	mixCache map[string]string
+	once     sync.Once
+)
 
 func init() {
+	// 加载数据
+	loadMetadata()
+
 	control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
 		Brief:            "合成emoji",
@@ -28,62 +48,66 @@ func init() {
 	}).OnMessage(match).SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
 			r := ctx.State["emojimix"].([]rune)
-			r1, r2 := r[0], r[1]
-			
-			// 尝试合成
-			url := getEmojiMixURL(r1, r2)
+			url := getEmojiURLFromMetadata(r[0], r[1])
+
 			if url != "" {
 				ctx.SendChain(message.Image(url))
 				return
 			}
-			
-			// 如果没找到，可以保持沉默或者反馈给用户
-			logrus.Debugf("[emojimix] failed to mix: %x + %x", r1, r2)
+			logrus.Debugf("[emojimix] metadata 中未找到合成: %x + %x", r[0], r[1])
 		})
 }
-func getEmojiMixURL(r1, r2 rune) string {
-	// 1. 核心格式化函数
-	// Google 要求：文件夹名和文件名中的 u 后面，4位码要补齐，5位码保持原样
-	toGoogleStr := func(r rune, isFileName bool) string {
-		h := fmt.Sprintf("%x", r)
-		// 如果是 4 位及以下，通常补齐到 4 位（使用 %04x）
-		if r < 0x10000 {
-			h = fmt.Sprintf("%04x", r)
-			// 文件名部分针对特殊符号添加变体选择符
-			if isFileName && (r == 0x2665 || r == 0x2b50 || r == 0x263a || r == 0x2764) {
-				h += "-ufe0f"
-			}
+
+// 核心查询逻辑：不再需要 http 请求，直接查 map
+func getEmojiURLFromMetadata(r1, r2 rune) string {
+	// 1. 将 rune 转为 google 格式的 hex 字符串
+	s1 := fmt.Sprintf("%x", r1)
+	s2 := fmt.Sprintf("%x", r2)
+
+	// 2. 排序，确保 Key 唯一性 (a_b 和 b_a 指向同一个结果)
+	keys := []string{s1, s2}
+	sort.Strings(keys)
+	cacheKey := keys[0] + "_" + keys[1]
+
+	return mixCache[cacheKey]
+}
+
+// 加载本地 metadata.json 并转换为快速索引 map
+func loadMetadata() {
+	once.Do(func() {
+		mixCache = make(map[string]string)
+		path := filepath.Join("data", "emojimix", "metadata.json")
+		
+		file, err := os.ReadFile(path)
+		if err != nil {
+			logrus.Errorf("[emojimix] 读取 metadata 失败: %v", err)
+			return
 		}
-		return h
-	}
 
-	// 准备两种顺序的参数
-	// trial: {文件夹名, 左文件名, 右文件名}
-	trials := [][]string{
-		{toGoogleStr(r1, false), toGoogleStr(r1, true), toGoogleStr(r2, true)},
-		{toGoogleStr(r2, false), toGoogleStr(r2, true), toGoogleStr(r1, true)},
-	}
+		var rawData EmojiData
+		if err := json.Unmarshal(file, &rawData); err != nil {
+			logrus.Errorf("[emojimix] 解析 metadata 失败: %v", err)
+			return
+		}
 
-	client := &http.Client{Timeout: 2 * time.Second}
-
-	for _, date := range commonDates {
-		for _, t := range trials {
-			// 路径模版：.../日期/u文件夹/u左文件名_u右文件名.png
-			testURL := fmt.Sprintf("https://www.gstatic.com/android/keyboard/emojikitchen/%d/u%s/u%s_u%s.png",
-				date, t[0], t[1], t[2])
-
-			resp, err := client.Head(testURL)
-			if err == nil {
-				resp.Body.Close()
-				if resp.StatusCode == http.StatusOK {
-					return testURL
+		// 扁平化数据到 mixCache 中
+		for _, info := range rawData.Data {
+			for _, combos := range info.Combinations {
+				for _, c := range combos {
+					// 同样进行排序以保证存入的 key 格式一致
+					k := []string{c.LeftEmoji, c.RightEmoji}
+					sort.Strings(k)
+					key := k[0] + "_" + k[1]
+					// 只存储最新的（通常列表第一个就是最新的，或者根据 isLatest 过滤）
+					if _, ok := mixCache[key]; !ok {
+						mixCache[key] = c.GStaticUrl
+					}
 				}
 			}
 		}
-	}
-	return ""
+		logrus.Infof("[emojimix] 成功加载 %d 条合成索引", len(mixCache))
+	})
 }
-
 // 匹配逻辑保持不变，但移除了对硬编码 map 的依赖
 func match(ctx *zero.Ctx) bool {
 	var r []rune
