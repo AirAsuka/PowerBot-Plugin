@@ -51,7 +51,9 @@ var (
 		DisableOnDefault: false,
 		Brief:            "AmongUs战绩查询",
 		Help: "- 录入信息 xxxx (绑定你的AmongUs ID)\n" +
-			"- 查询战绩 (查询你的AmongUs战绩)",
+			"- 查询战绩 (查询你的AmongUs战绩)\n" +
+			"- 最近n场 (查询最近n场对局，n为1-10)\n" +
+			"- 游戏详情 <gameId> (查询对局详情，不传gameId默认取最近1场)",
 		PrivateDataFolder: "amongus",
 	})
 )
