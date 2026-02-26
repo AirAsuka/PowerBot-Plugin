@@ -3,7 +3,9 @@ package amongus
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"image/color"
 	"net/url"
 	"strconv"
 	"strings"
@@ -11,6 +13,9 @@ import (
 
 	"github.com/FloatTech/floatbox/binary"
 	"github.com/FloatTech/floatbox/web"
+	"github.com/FloatTech/gg"
+	"github.com/FloatTech/imgfactory"
+	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/img/text"
 	"github.com/tidwall/gjson"
 	zero "github.com/wdvxdr1123/ZeroBot"
@@ -242,22 +247,13 @@ func init() {
 			}
 
 			// 生成摘要图片（全局信息 + 玩家信息）
-			summaryText := formatGameDetailSummary(gameID, detailResult)
-			summaryImg, err := text.RenderToBase64(summaryText, text.FontFile, 1600, 20)
+			imgBytes, err := renderGameDetailImage(gameID, detailResult)
 			if err != nil {
-				// 渲染失败就退回纯文本
-				ctx.SendChain(message.Text(summaryText))
-			} else {
-				ctx.SendChain(message.Image("base64://" + binary.BytesToString(summaryImg)))
-			}
-
-			// 原始 JSON（全量返回，使用图片承载避免过长）
-			rawImg, err := text.RenderToBase64(detailText, text.FontFile, 1200, 20)
-			if err != nil {
-				ctx.SendChain(message.Text(detailText))
+				// 渲染失败则退回文本摘要（不再回传原始JSON）
+				ctx.SendChain(message.Text(formatGameDetailSummary(gameID, detailResult)))
 				return
 			}
-			ctx.SendChain(message.Image("base64://" + binary.BytesToString(rawImg)))
+			ctx.SendChain(message.ImageBytes(imgBytes))
 		})
 }
 
@@ -603,4 +599,328 @@ func formatGameDetailSummary(gameID string, detail gjson.Result) string {
 	}
 
 	return strings.TrimSpace(sb.String())
+}
+
+func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
+	global := detail.Get("data.Global")
+	players := detail.Get("data.Players").Array()
+
+	if !global.Exists() {
+		return nil, errors.New("缺少 data.Global")
+	}
+
+	// 解析时间用于“存活时间”
+	duration := global.Get("Duration").String()
+	startTimeStr := global.Get("StartTime").String()
+	endTimeStr := global.Get("EndTime").String()
+	startTime, okStart := parseGameTime(startTimeStr)
+	endTime, okEnd := parseGameTime(endTimeStr)
+	if okStart && !okEnd {
+		if sec, ok := parseHMSDurationToSeconds(duration); ok {
+			endTime = startTime.Add(time.Duration(sec) * time.Second)
+			okEnd = true
+		}
+	}
+	globalSec, okGlobalSec := parseHMSDurationToSeconds(duration)
+
+	// 画布布局
+	const (
+		padding       = 40.0
+		titleSize     = 44.0
+		subTitleSize  = 32.0
+		headerSize    = 24.0
+		bodySize      = 22.0
+		rowH          = 42.0
+		globalRowH    = 54.0
+		cardRadius    = 18.0
+		lineW         = 2.0
+		tableHeaderH  = 52.0
+		maxTextWidth  = 240.0
+	)
+
+	// 列宽（按你给的字段顺序）
+	colW := []float64{
+		220, // 玩家
+		120, // 主职业
+		220, // 职业详情
+		220, // 职业历史
+		70,  // 胜利
+		70,  // 击杀
+		110, // 任务
+		120, // 存活时间
+		260, // 死亡信息
+	}
+	tableW := 0.0
+	for _, w := range colW {
+		tableW += w
+	}
+
+	// 计算整体高度（不分页：直接按玩家数拉长）
+	titleH := 70.0
+	sectionGap := 18.0
+	globalBlockH := 40.0 + globalRowH*2 // 2行网格
+	tableH := tableHeaderH + rowH*float64(len(players))
+	canvasW := padding*2 + tableW
+	canvasH := padding + titleH + sectionGap + globalBlockH + sectionGap + (40.0 + tableH) + padding
+
+	c := gg.NewContext(int(canvasW), int(canvasH))
+	// 背景
+	c.SetRGB255(245, 247, 250)
+	c.Clear()
+
+	// 字体
+	boldFont, err := text.GetLazyData(text.BoldFontFile, control.Md5File, true)
+	if err != nil {
+		return nil, err
+	}
+	regularFont, err := text.GetLazyData(text.FontFile, control.Md5File, true)
+	if err != nil {
+		return nil, err
+	}
+
+	// 标题卡片
+	cardX, cardY := padding, padding
+	cardW := canvasW - padding*2
+
+	c.SetRGBA255(255, 255, 255, 255)
+	c.DrawRoundedRectangle(cardX, cardY, cardW, titleH, cardRadius)
+	c.Fill()
+	c.SetRGBA255(0, 0, 0, 18)
+	c.SetLineWidth(lineW)
+	c.DrawRoundedRectangle(cardX, cardY, cardW, titleH, cardRadius)
+	c.Stroke()
+
+	if err = c.ParseFontFace(boldFont, titleSize); err != nil {
+		return nil, err
+	}
+	c.SetRGB255(30, 41, 59)
+	c.DrawStringAnchored(fmt.Sprintf("游戏详情 - %s", gameID), cardX+20, cardY+titleH/2, 0, 0.5)
+
+	// 全局信息卡片
+	globalX := padding
+	globalY := cardY + titleH + sectionGap
+	c.SetRGBA255(255, 255, 255, 255)
+	c.DrawRoundedRectangle(globalX, globalY, cardW, globalBlockH, cardRadius)
+	c.Fill()
+	c.SetRGBA255(0, 0, 0, 18)
+	c.SetLineWidth(lineW)
+	c.DrawRoundedRectangle(globalX, globalY, cardW, globalBlockH, cardRadius)
+	c.Stroke()
+
+	if err = c.ParseFontFace(boldFont, subTitleSize); err != nil {
+		return nil, err
+	}
+	c.SetRGB255(15, 23, 42)
+	c.DrawStringAnchored("全局信息", globalX+20, globalY+36, 0, 0.5)
+
+	// 全局网格：两行四列（key/value）
+	g1 := [][2]string{
+		{"游戏版本", global.Get("GameVersion").String()},
+		{"房主", global.Get("HostPlayer").String()},
+		{"房间代码", global.Get("RoomCode").String()},
+		{"房主代码", global.Get("HostCode").String()},
+	}
+	g2 := [][2]string{
+		{"开始时间", startTimeStr},
+		{"结束时间", endTimeStr},
+		{"游戏时长", duration},
+		{"胜利条件", winText(global.Get("WinCondition").String())},
+	}
+	// 玩家数量单独补到第二行（在胜利条件后面追加）
+	playerCount := fmt.Sprintf("%d", global.Get("PlayerCount").Int())
+	g2 = append(g2, [2]string{"玩家数量", playerCount})
+
+	gridTop := globalY + 64
+	gridLeft := globalX + 20
+	gridW := cardW - 40
+	cellW := gridW / 4
+
+	drawKV := func(x, y float64, k, v string) error {
+		if err := c.ParseFontFace(boldFont, headerSize); err != nil {
+			return err
+		}
+		c.SetRGB255(71, 85, 105)
+		c.DrawStringAnchored(k, x, y, 0, 0.5)
+		if err := c.ParseFontFace(regularFont, bodySize); err != nil {
+			return err
+		}
+		c.SetRGB255(15, 23, 42)
+		c.DrawStringWrapped(v, x+86, y, 0, 0.5, cellW-100, 1.4, gg.AlignLeft)
+		return nil
+	}
+
+	// 画第一行 4格
+	for i := 0; i < 4 && i < len(g1); i++ {
+		if err := drawKV(gridLeft+cellW*float64(i), gridTop+globalRowH*0.5, g1[i][0], g1[i][1]); err != nil {
+			return nil, err
+		}
+	}
+	// 画第二行：前4格用 g2 的前4个；第5个（玩家数量）放在第二行右侧下方“胶囊标签”
+	for i := 0; i < 4 && i < len(g2); i++ {
+		if err := drawKV(gridLeft+cellW*float64(i), gridTop+globalRowH*1.5, g2[i][0], g2[i][1]); err != nil {
+			return nil, err
+		}
+	}
+
+	// 玩家数量胶囊
+	if len(g2) >= 5 {
+		tagX := globalX + cardW - 260
+		tagY := globalY + globalBlockH - 56
+		tagW := 240.0
+		tagH := 36.0
+		c.SetRGBA255(59, 130, 246, 18)
+		c.DrawRoundedRectangle(tagX, tagY, tagW, tagH, 12)
+		c.Fill()
+		if err = c.ParseFontFace(boldFont, headerSize); err != nil {
+			return nil, err
+		}
+		c.SetRGB255(37, 99, 235)
+		c.DrawStringAnchored("玩家数量", tagX+16, tagY+tagH/2, 0, 0.5)
+		if err = c.ParseFontFace(boldFont, headerSize); err != nil {
+			return nil, err
+		}
+		c.SetRGB255(15, 23, 42)
+		c.DrawStringAnchored(g2[4][1], tagX+tagW-16, tagY+tagH/2, 1, 0.5)
+	}
+
+	// 玩家信息卡片
+	tableX := padding
+	tableY := globalY + globalBlockH + sectionGap
+	tableCardH := 40.0 + tableH
+	c.SetRGBA255(255, 255, 255, 255)
+	c.DrawRoundedRectangle(tableX, tableY, cardW, tableCardH, cardRadius)
+	c.Fill()
+	c.SetRGBA255(0, 0, 0, 18)
+	c.SetLineWidth(lineW)
+	c.DrawRoundedRectangle(tableX, tableY, cardW, tableCardH, cardRadius)
+	c.Stroke()
+
+	if err = c.ParseFontFace(boldFont, subTitleSize); err != nil {
+		return nil, err
+	}
+	c.SetRGB255(15, 23, 42)
+	c.DrawStringAnchored("玩家信息", tableX+20, tableY+36, 0, 0.5)
+
+	// 表头背景
+	headerX := tableX + 20
+	headerY := tableY + 60
+	c.SetRGBA255(15, 23, 42, 8)
+	c.DrawRoundedRectangle(headerX, headerY, tableW, tableHeaderH, 12)
+	c.Fill()
+
+	headers := []string{"玩家", "主职业", "职业详情", "职业历史", "胜利", "击杀", "任务", "存活时间", "死亡信息"}
+	if err = c.ParseFontFace(boldFont, headerSize); err != nil {
+		return nil, err
+	}
+	c.SetRGB255(51, 65, 85)
+	x := headerX
+	for i, h := range headers {
+		c.DrawStringAnchored(h, x+10, headerY+tableHeaderH/2, 0, 0.5)
+		x += colW[i]
+	}
+
+	// 表格行
+	if err = c.ParseFontFace(regularFont, bodySize); err != nil {
+		return nil, err
+	}
+	rowStartY := headerY + tableHeaderH
+	for i, p := range players {
+		y := rowStartY + rowH*float64(i)
+		// 斑马纹
+		if i%2 == 0 {
+			c.SetRGBA255(148, 163, 184, 10)
+			c.DrawRectangle(headerX, y, tableW, rowH)
+			c.Fill()
+		}
+		// 分隔线
+		c.SetRGBA255(148, 163, 184, 35)
+		c.SetLineWidth(1)
+		c.DrawLine(headerX, y+rowH, headerX+tableW, y+rowH)
+		c.Stroke()
+
+		playerName := p.Get("PlayerName").String()
+		mainRole := mapOrSelf(roleText, p.Get("RoleInfo.MainRole").String())
+		detailsArr := p.Get("RoleInfo.RoleDetails").Array()
+		details := make([]string, 0, len(detailsArr))
+		for _, d := range detailsArr {
+			details = append(details, mapOrSelf(roleText, d.String()))
+		}
+		histArr := p.Get("RoleInfo.RoleHistories").Array()
+		hists := make([]string, 0, len(histArr))
+		for _, h := range histArr {
+			hists = append(hists, mapOrSelf(roleText, h.String()))
+		}
+		isWinner := p.Get("GameplayStats.IsWinner").Bool()
+		isDead := p.Get("GameplayStats.IsDead").Bool()
+		killCount := p.Get("GameplayStats.KillCount").Int()
+		completed := p.Get("GameplayStats.Tasks.Completed").Int()
+		total := p.Get("GameplayStats.Tasks.Total").Int()
+		deathReason := p.Get("GameplayStats.DeathReason").String()
+		killedBy := p.Get("GameplayStats.KilledBy").String()
+		deathTimeStr := p.Get("GameplayStats.DeathTime").String()
+		deathTime, okDeath := parseGameTime(deathTimeStr)
+
+		aliveSeconds := int64(0)
+		switch {
+		case okStart && okDeath && isDead:
+			aliveSeconds = int64(deathTime.Sub(startTime).Seconds())
+		case okStart && okEnd:
+			aliveSeconds = int64(endTime.Sub(startTime).Seconds())
+		case okGlobalSec:
+			aliveSeconds = globalSec
+		default:
+			aliveSeconds = 0
+		}
+
+		winCN := "否"
+		if isWinner {
+			winCN = "是"
+		}
+		taskText := fmt.Sprintf("%d/%d", completed, total)
+		timeText := formatMMSS(aliveSeconds)
+		deathInfo := formatDeathInfo(deathReason, killedBy, isDead)
+
+		cells := []string{
+			playerName,
+			mainRole,
+			strings.Join(details, ","),
+			strings.Join(hists, ","),
+			winCN,
+			fmt.Sprintf("%d", killCount),
+			taskText,
+			timeText,
+			deathInfo,
+		}
+
+		x = headerX
+		for ci, cell := range cells {
+			c.SetRGB255(15, 23, 42)
+			if ci == 4 { // 胜利列颜色强调
+				if winCN == "是" {
+					c.SetRGB255(22, 163, 74)
+				} else {
+					c.SetRGB255(239, 68, 68)
+				}
+			}
+
+			// 文本绘制：左对齐，超长自动换行（最多2行）
+			maxW := colW[ci] - 20
+			align := gg.AlignLeft
+			anchorX := 0.0
+			drawX := x + 10
+			if ci == 4 || ci == 5 || ci == 6 || ci == 7 { // 小字段居中
+				align = gg.AlignCenter
+				anchorX = 0.5
+				drawX = x + colW[ci]/2
+			}
+
+			c.DrawStringWrapped(cell, drawX, y+rowH/2, anchorX, 0.5, maxW, 1.25, align)
+			x += colW[ci]
+		}
+	}
+
+	// 角落水印/版本（可选，保持简洁：不加）
+	_ = color.RGBA{} // 防止某些 go 版本的 unused import（保险）
+
+	return imgfactory.ToBytes(c.Image())
 }
