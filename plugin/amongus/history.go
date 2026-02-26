@@ -713,19 +713,19 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 	playerCount := fmt.Sprintf("%d", global.Get("PlayerCount").Int())
 	rows := [][][2]string{
 		{
-			{"游戏版本  ", global.Get("GameVersion").String()},
-			{"房主  ", global.Get("HostPlayer").String()},
-			{"房间代码  ", global.Get("RoomCode").String()},
+			{"游戏版本", global.Get("GameVersion").String()},
+			{"房主", global.Get("HostPlayer").String()},
+			{"房间代码", global.Get("RoomCode").String()},
 		},
 		{
-			{"开始时间  ", startTimeStr},
-			{"结束时间  ", endTimeStr},
-			{"游戏时长  ", duration},
+			{"开始时间", startTimeStr},
+			{"结束时间", endTimeStr},
+			{"游戏时长", duration},
 		},
 		{
-			{"胜利条件  ", winText(global.Get("WinCondition").String())},
-			{"玩家数量  ", playerCount},
-			{"房主代码  ", global.Get("HostCode").String()},
+			{"胜利条件", winText(global.Get("WinCondition").String())},
+			{"玩家数量", playerCount},
+			{"房主代码", global.Get("HostCode").String()},
 		},
 	}
 
@@ -735,16 +735,30 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 	cellW := gridW / 3
 
 	drawKV := func(x, y float64, k, v string) error {
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
 		if err := c.ParseFontFace(boldFont, headerSize); err != nil {
 			return err
 		}
 		c.SetRGB255(71, 85, 105)
 		c.DrawStringAnchored(k, x, y, 0, 0.5)
+		keyW, _ := c.MeasureString(k)
 		if err := c.ParseFontFace(regularFont, bodySize); err != nil {
 			return err
 		}
 		c.SetRGB255(15, 23, 42)
-		c.DrawStringWrapped(v, x+86, y, 0, 0.5, cellW-100, 1.4, gg.AlignLeft)
+		// value 起始位置根据 key 宽度动态偏移，避免 key/value 文字重叠
+		const gap = 16.0
+		valueX := x + keyW + gap
+		right := x + cellW - 10 // 右侧留白
+		if valueX > right {
+			valueX = right
+		}
+		maxW := right - valueX
+		if maxW < 10 {
+			return nil
+		}
+		c.DrawStringWrapped(v, valueX, y, 0, 0.5, maxW, 1.35, gg.AlignLeft)
 		return nil
 	}
 
