@@ -1,17 +1,14 @@
 package amongus
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"image/color"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/FloatTech/floatbox/binary"
+	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/web"
 	"github.com/FloatTech/gg"
 	"github.com/FloatTech/imgfactory"
@@ -240,7 +237,7 @@ func init() {
 				gameID = games[0].GameID
 			}
 
-			detailText, detailResult, err := queryGameDetail(gameID)
+			detailResult, err := queryGameDetail(gameID)
 			if err != nil {
 				ctx.SendChain(message.Text("[amongus] 查询游戏详情失败: ", err))
 				return
@@ -300,25 +297,20 @@ func formatRecentGames(amongusID string, games []recentGame) string {
 	return strings.TrimSpace(sb.String())
 }
 
-func queryGameDetail(gameID string) (string, gjson.Result, error) {
+func queryGameDetail(gameID string) (gjson.Result, error) {
 	encodedGameID := url.PathEscape(gameID)
 	fullURL := detailAPI + encodedGameID
 
 	data, err := web.GetData(fullURL)
 	if err != nil {
-		return "", gjson.Result{}, err
+		return gjson.Result{}, err
 	}
 
 	result := gjson.ParseBytes(data)
 	if !result.Get("success").Bool() {
-		return "", gjson.Result{}, fmt.Errorf(errorMessageFromResult(result, "查询游戏详情失败"))
+		return gjson.Result{}, fmt.Errorf(errorMessageFromResult(result, "查询游戏详情失败"))
 	}
-
-	var out bytes.Buffer
-	if err = json.Indent(&out, data, "", "  "); err != nil {
-		return string(data), result, nil
-	}
-	return out.String(), result, nil
+	return result, nil
 }
 
 func errorMessageFromResult(result gjson.Result, fallback string) string {
@@ -669,11 +661,11 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 	c.Clear()
 
 	// 字体
-	boldFont, err := text.GetLazyData(text.BoldFontFile, control.Md5File, true)
+	boldFont, err := file.GetLazyData(text.BoldFontFile, control.Md5File, true)
 	if err != nil {
 		return nil, err
 	}
-	regularFont, err := text.GetLazyData(text.FontFile, control.Md5File, true)
+	regularFont, err := file.GetLazyData(text.FontFile, control.Md5File, true)
 	if err != nil {
 		return nil, err
 	}
@@ -918,9 +910,6 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 			x += colW[ci]
 		}
 	}
-
-	// 角落水印/版本（可选，保持简洁：不加）
-	_ = color.RGBA{} // 防止某些 go 版本的 unused import（保险）
 
 	return imgfactory.ToBytes(c.Image())
 }
