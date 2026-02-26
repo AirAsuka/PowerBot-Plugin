@@ -650,7 +650,7 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 	// 计算整体高度（不分页：直接按玩家数拉长）
 	titleH := 70.0
 	sectionGap := 18.0
-	globalBlockH := 40.0 + globalRowH*2 // 2行网格
+	globalBlockH := 40.0 + globalRowH*3 // 3行网格（每行3组信息，更不拥挤）
 	tableH := tableHeaderH + rowH*float64(len(players))
 	canvasW := padding*2 + tableW
 	canvasH := padding + titleH + sectionGap + globalBlockH + sectionGap + (40.0 + tableH) + padding
@@ -705,27 +705,30 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 	c.SetRGB255(15, 23, 42)
 	c.DrawStringAnchored("全局信息", globalX+20, globalY+36, 0, 0.5)
 
-	// 全局网格：两行四列（key/value）
-	g1 := [][2]string{
-		{"游戏版本", global.Get("GameVersion").String()},
-		{"房主", global.Get("HostPlayer").String()},
-		{"房间代码", global.Get("RoomCode").String()},
-		{"房主代码", global.Get("HostCode").String()},
-	}
-	g2 := [][2]string{
-		{"开始时间", startTimeStr},
-		{"结束时间", endTimeStr},
-		{"游戏时长", duration},
-		{"胜利条件", winText(global.Get("WinCondition").String())},
-	}
-	// 玩家数量单独补到第二行（在胜利条件后面追加）
+	// 全局网格：三行三列（每行3组 key/value）
 	playerCount := fmt.Sprintf("%d", global.Get("PlayerCount").Int())
-	g2 = append(g2, [2]string{"玩家数量", playerCount})
+	rows := [][][2]string{
+		{
+			{"游戏版本", global.Get("GameVersion").String()},
+			{"房主", global.Get("HostPlayer").String()},
+			{"房间代码", global.Get("RoomCode").String()},
+		},
+		{
+			{"开始时间", startTimeStr},
+			{"结束时间", endTimeStr},
+			{"游戏时长", duration},
+		},
+		{
+			{"胜利条件", winText(global.Get("WinCondition").String())},
+			{"玩家数量", playerCount},
+			{"房主代码", global.Get("HostCode").String()},
+		},
+	}
 
 	gridTop := globalY + 64
 	gridLeft := globalX + 20
 	gridW := cardW - 40
-	cellW := gridW / 4
+	cellW := gridW / 3
 
 	drawKV := func(x, y float64, k, v string) error {
 		if err := c.ParseFontFace(boldFont, headerSize); err != nil {
@@ -741,38 +744,14 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 		return nil
 	}
 
-	// 画第一行 4格
-	for i := 0; i < 4 && i < len(g1); i++ {
-		if err := drawKV(gridLeft+cellW*float64(i), gridTop+globalRowH*0.5, g1[i][0], g1[i][1]); err != nil {
-			return nil, err
+	// 画三行，每行3格
+	for r := 0; r < len(rows); r++ {
+		row := rows[r]
+		for i := 0; i < 3 && i < len(row); i++ {
+			if err := drawKV(gridLeft+cellW*float64(i), gridTop+globalRowH*(float64(r)+0.5), row[i][0], row[i][1]); err != nil {
+				return nil, err
+			}
 		}
-	}
-	// 画第二行：前4格用 g2 的前4个；第5个（玩家数量）放在第二行右侧下方“胶囊标签”
-	for i := 0; i < 4 && i < len(g2); i++ {
-		if err := drawKV(gridLeft+cellW*float64(i), gridTop+globalRowH*1.5, g2[i][0], g2[i][1]); err != nil {
-			return nil, err
-		}
-	}
-
-	// 玩家数量胶囊
-	if len(g2) >= 5 {
-		tagX := globalX + cardW - 260
-		tagY := globalY + globalBlockH - 56
-		tagW := 240.0
-		tagH := 36.0
-		c.SetRGBA255(59, 130, 246, 18)
-		c.DrawRoundedRectangle(tagX, tagY, tagW, tagH, 12)
-		c.Fill()
-		if err = c.ParseFontFace(boldFont, headerSize); err != nil {
-			return nil, err
-		}
-		c.SetRGB255(37, 99, 235)
-		c.DrawStringAnchored("玩家数量", tagX+16, tagY+tagH/2, 0, 0.5)
-		if err = c.ParseFontFace(boldFont, headerSize); err != nil {
-			return nil, err
-		}
-		c.SetRGB255(15, 23, 42)
-		c.DrawStringAnchored(g2[4][1], tagX+tagW-16, tagY+tagH/2, 1, 0.5)
 	}
 
 	// 玩家信息卡片
