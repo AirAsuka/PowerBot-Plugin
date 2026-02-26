@@ -163,5 +163,7 @@ var RoleText = map[string]string{
 	"Poltergeist":          "捣蛋鬼",
 	"ProfessionalModifier": "职业杀手",
 	"PoucherModifier":      "入殓师",
+	"SoulSight":            "窥天者",
+	"Shifter":              "交换师",
 }
 
