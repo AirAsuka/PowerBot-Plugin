@@ -707,7 +707,7 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 
 	// 全局网格：三行三列（每行3组 key/value）
 	playerCount := fmt.Sprintf("%d", global.Get("PlayerCount").Int())
-	rows := [][][3]string{
+	rows := [][][2]string{
 		{
 			{"游戏版本  ", global.Get("GameVersion").String()},
 			{"房主  ", global.Get("HostPlayer").String()},
