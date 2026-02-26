@@ -41,13 +41,24 @@ type recentGame struct {
 
 func init() {
 	// 最近n场
-	engine.OnRegex(`^最近\s*([0-9]{1,2})\s*场$`, getDB).SetBlock(true).
+	engine.OnRegex(`^最近\s*([0-9]{1,2})\s*场(?:\s+([0-9]{1,4}))?$`, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			nText := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
 			n, err := strconv.Atoi(nText)
 			if err != nil || n <= 0 || n > 10 {
 				ctx.SendChain(message.Text("参数错误：n必须是1到10之间"))
 				return
+			}
+			// m 控制 page，不传默认 1
+			mText := strings.TrimSpace(ctx.State["regex_matched"].([]string)[2])
+			page := 1
+			if mText != "" {
+				m, err := strconv.Atoi(mText)
+				if err != nil || m <= 0 {
+					ctx.SendChain(message.Text("参数错误：m必须是大于0的整数"))
+					return
+				}
+				page = m
 			}
 
 			user, err := database.find(ctx.Event.UserID)
@@ -56,7 +67,7 @@ func init() {
 				return
 			}
 
-			games, err := queryRecentGames(user.AmongusID, n)
+			games, err := queryRecentGames(user.AmongusID, page, n)
 			if err != nil {
 				ctx.SendChain(message.Text("[amongus] 查询失败: ", err))
 				return
@@ -79,7 +90,7 @@ func init() {
 					return
 				}
 
-				games, err := queryRecentGames(user.AmongusID, 1)
+				games, err := queryRecentGames(user.AmongusID, 1, 1)
 				if err != nil {
 					ctx.SendChain(message.Text("[amongus] 获取最近1场失败: ", err))
 					return
@@ -108,9 +119,15 @@ func init() {
 		})
 }
 
-func queryRecentGames(amongusID string, n int) ([]recentGame, error) {
+func queryRecentGames(amongusID string, page int, pageSize int) ([]recentGame, error) {
 	encodedID := url.PathEscape(amongusID)
-	fullURL := fmt.Sprintf("%s?playerCode=%s&page=1&pageSize=%d", queryAPI, encodedID, n)
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 1
+	}
+	fullURL := fmt.Sprintf("%s?playerCode=%s&page=%d&pageSize=%d", queryAPI, encodedID, page, pageSize)
 
 	data, err := web.GetData(fullURL)
 	if err != nil {
