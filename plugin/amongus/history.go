@@ -622,12 +622,14 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 		subTitleSize  = 32.0
 		headerSize    = 24.0
 		bodySize      = 22.0
-		rowH          = 42.0
-		globalRowH    = 54.0
+		rowH          = 62.0 // 单行/双行都留足空间，避免贴边
+		globalRowH    = 68.0 // 全局信息每格允许轻微换行
 		cardRadius    = 18.0
 		lineW         = 2.0
-		tableHeaderH  = 52.0
-		maxTextWidth  = 240.0
+		tableHeaderH  = 56.0
+		globalTopPad  = 68.0 // 全局卡片标题区到网格起始的距离
+		tableTopPad   = 64.0 // 玩家卡片标题区到表头起始的距离
+		cardBottomPad = 28.0 // 卡片底部留白，防止文字踩边框
 	)
 
 	// 列宽（按你给的字段顺序）
@@ -650,10 +652,12 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 	// 计算整体高度（不分页：直接按玩家数拉长）
 	titleH := 70.0
 	sectionGap := 18.0
-	globalBlockH := 40.0 + globalRowH*3 // 3行网格（每行3组信息，更不拥挤）
-	tableH := tableHeaderH + rowH*float64(len(players))
+	// 全局卡片高度 = 标题区 + 3行网格 + 底部留白
+	globalBlockH := globalTopPad + globalRowH*3 + cardBottomPad
+	// 玩家卡片高度 = 标题区 + 表头 + N行 + 底部留白
+	tableCardH := tableTopPad + tableHeaderH + rowH*float64(len(players)) + cardBottomPad
 	canvasW := padding*2 + tableW
-	canvasH := padding + titleH + sectionGap + globalBlockH + sectionGap + (40.0 + tableH) + padding
+	canvasH := padding + titleH + sectionGap + globalBlockH + sectionGap + tableCardH + padding
 
 	c := gg.NewContext(int(canvasW), int(canvasH))
 	// 背景
@@ -725,7 +729,7 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 		},
 	}
 
-	gridTop := globalY + 64
+	gridTop := globalY + globalTopPad
 	gridLeft := globalX + 20
 	gridW := cardW - 40
 	cellW := gridW / 3
@@ -757,7 +761,6 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 	// 玩家信息卡片
 	tableX := padding
 	tableY := globalY + globalBlockH + sectionGap
-	tableCardH := 40.0 + tableH
 	c.SetRGBA255(255, 255, 255, 255)
 	c.DrawRoundedRectangle(tableX, tableY, cardW, tableCardH, cardRadius)
 	c.Fill()
@@ -774,7 +777,7 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 
 	// 表头背景
 	headerX := tableX + 20
-	headerY := tableY + 60
+	headerY := tableY + tableTopPad
 	c.SetRGBA255(15, 23, 42, 8)
 	c.DrawRoundedRectangle(headerX, headerY, tableW, tableHeaderH, 12)
 	c.Fill()
