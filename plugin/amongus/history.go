@@ -170,6 +170,7 @@ func queryRecentGames(amongusID string, page int, pageSize int) ([]recentGame, p
 func formatRecentGames(amongusID string, games []recentGame, pg paginationInfo) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("玩家ID：%s\n", amongusID))
+	sb.WriteString("=================================\n")
 	for _, game := range games {
 		winText, ok := winConditionText[game.WinCondition]
 		if !ok {

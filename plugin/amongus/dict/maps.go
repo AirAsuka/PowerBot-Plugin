@@ -1,5 +1,15 @@
 package dict
 
+// RoleTextReverse 中文名 -> 英文名列表的反向映射（自动从 RoleText 生成）
+var RoleTextReverse map[string][]string
+
+func init() {
+	RoleTextReverse = make(map[string][]string, len(RoleText))
+	for en, cn := range RoleText {
+		RoleTextReverse[cn] = append(RoleTextReverse[cn], en)
+	}
+}
+
 // WinConditionText 对局胜利条件文本映射
 var WinConditionText = map[string]string{
 	"CanceledEnd":     "房主结束游戏",

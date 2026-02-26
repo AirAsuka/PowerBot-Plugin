@@ -12,6 +12,7 @@ import (
 	fcext "github.com/FloatTech/floatbox/ctxext"
 	"github.com/FloatTech/floatbox/web"
 	sql "github.com/FloatTech/sqlite"
+	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/img/text"
@@ -53,7 +54,8 @@ var (
 		Help: "- 录入信息 xxxx (绑定你的AmongUs ID)\n" +
 			"- 查询战绩 (查询你的AmongUs战绩)\n" +
 			"- 最近n场 (查询最近n场对局，n为1-10)\n" +
-			"- 游戏详情 <gameId> (查询对局详情，不传gameId默认取最近1场)",
+			"- 游戏详情 <gameId> (查询对局详情，不传gameId默认取最近1场)\n" +
+			"- 小知识 <职业名> (查询职业技能描述)",
 		PrivateDataFolder: "amongus",
 	})
 )
@@ -153,5 +155,22 @@ func init() {
 				return
 			}
 			ctx.SendChain(message.Image("base64://" + binary.BytesToString(imgData)))
+		})
+
+	// 小知识 <职业名>
+	engine.OnRegex(`^小知识\s+(.+)$`).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			roleName := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
+			if roleName == "" {
+				return
+			}
+			desc := amongusdict.GetRoleFullDesc(roleName)
+			if desc == "" {
+				ctx.SendChain(message.Text("未找到职业「", roleName, "」的描述信息"))
+				return
+			}
+			// 将 \n 替换为真正的换行
+			desc = strings.ReplaceAll(desc, `\n`, "\n")
+			ctx.SendChain(message.Text("══ ", roleName, " ══\n\n", desc))
 		})
 }
