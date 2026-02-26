@@ -164,7 +164,7 @@ func init() {
 			if roleName == "" {
 				return
 			}
-			desc := amongusdict.GetRoleFullDesc(roleName)
+			desc := amongusdict.GetRoleDesc(roleName)
 			if desc == "" {
 				ctx.SendChain(message.Text("未找到职业「", roleName, "」的描述信息"))
 				return
