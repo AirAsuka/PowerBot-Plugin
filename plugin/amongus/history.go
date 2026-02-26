@@ -707,21 +707,21 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 
 	// 全局网格：三行三列（每行3组 key/value）
 	playerCount := fmt.Sprintf("%d", global.Get("PlayerCount").Int())
-	rows := [][][2]string{
+	rows := [][][3]string{
 		{
-			{"游戏版本", global.Get("GameVersion").String()},
-			{"房主", global.Get("HostPlayer").String()},
-			{"房间代码", global.Get("RoomCode").String()},
+			{"游戏版本  ", global.Get("GameVersion").String()},
+			{"房主  ", global.Get("HostPlayer").String()},
+			{"房间代码  ", global.Get("RoomCode").String()},
 		},
 		{
-			{"开始时间", startTimeStr},
-			{"结束时间", endTimeStr},
-			{"游戏时长", duration},
+			{"开始时间  ", startTimeStr},
+			{"结束时间  ", endTimeStr},
+			{"游戏时长  ", duration},
 		},
 		{
-			{"胜利条件", winText(global.Get("WinCondition").String())},
-			{"玩家数量", playerCount},
-			{"房主代码", global.Get("HostCode").String()},
+			{"胜利条件  ", winText(global.Get("WinCondition").String())},
+			{"玩家数量  ", playerCount},
+			{"房主代码  ", global.Get("HostCode").String()},
 		},
 	}
 
