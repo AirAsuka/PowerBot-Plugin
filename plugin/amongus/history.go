@@ -39,6 +39,13 @@ type recentGame struct {
 	WinCondition string
 }
 
+type paginationInfo struct {
+	Page       int64
+	PageSize   int64
+	Total      int64
+	TotalPages int64
+}
+
 func init() {
 	// 最近n场
 	engine.OnRegex(`^最近\s*([0-9]{1,2})\s*场(?:\s+([0-9]{1,4}))?$`, getDB).SetBlock(true).
@@ -67,7 +74,7 @@ func init() {
 				return
 			}
 
-			games, err := queryRecentGames(user.AmongusID, page, n)
+			games, pg, err := queryRecentGames(user.AmongusID, page, n)
 			if err != nil {
 				ctx.SendChain(message.Text("[amongus] 查询失败: ", err))
 				return
@@ -76,7 +83,7 @@ func init() {
 				ctx.SendChain(message.Text("未查询到最近对局记录"))
 				return
 			}
-			ctx.SendChain(message.Text(formatRecentGames(user.AmongusID, games)))
+			ctx.SendChain(message.Text(formatRecentGames(user.AmongusID, games, pg)))
 		})
 
 	// 游戏详情 <gameId>
@@ -90,7 +97,7 @@ func init() {
 					return
 				}
 
-				games, err := queryRecentGames(user.AmongusID, 1, 1)
+				games, _, err := queryRecentGames(user.AmongusID, 1, 1)
 				if err != nil {
 					ctx.SendChain(message.Text("[amongus] 获取最近1场失败: ", err))
 					return
@@ -119,7 +126,7 @@ func init() {
 		})
 }
 
-func queryRecentGames(amongusID string, page int, pageSize int) ([]recentGame, error) {
+func queryRecentGames(amongusID string, page int, pageSize int) ([]recentGame, paginationInfo, error) {
 	encodedID := url.PathEscape(amongusID)
 	if page <= 0 {
 		page = 1
@@ -131,12 +138,12 @@ func queryRecentGames(amongusID string, page int, pageSize int) ([]recentGame, e
 
 	data, err := web.GetData(fullURL)
 	if err != nil {
-		return nil, err
+		return nil, paginationInfo{}, err
 	}
 
 	result := gjson.ParseBytes(data)
 	if !result.Get("success").Bool() {
-		return nil, fmt.Errorf(errorMessageFromResult(result, "查询最近对局失败"))
+		return nil, paginationInfo{}, fmt.Errorf(errorMessageFromResult(result, "查询最近对局失败"))
 	}
 
 	items := result.Get("data").Array()
@@ -150,10 +157,17 @@ func queryRecentGames(amongusID string, page int, pageSize int) ([]recentGame, e
 			WinCondition: item.Get("winCondition").String(),
 		})
 	}
-	return games, nil
+
+	pg := paginationInfo{
+		Page:       result.Get("pagination.page").Int(),
+		PageSize:   result.Get("pagination.pageSize").Int(),
+		Total:      result.Get("pagination.total").Int(),
+		TotalPages: result.Get("pagination.totalPages").Int(),
+	}
+	return games, pg, nil
 }
 
-func formatRecentGames(amongusID string, games []recentGame) string {
+func formatRecentGames(amongusID string, games []recentGame, pg paginationInfo) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("玩家ID：%s\n", amongusID))
 	for _, game := range games {
@@ -165,6 +179,9 @@ func formatRecentGames(amongusID string, games []recentGame) string {
 			game.GameID, game.StartTime, game.Duration, game.PlayerCount, winText))
 		sb.WriteString("=================================\n")
 	}
+	// 分页信息（来自 /api/query 的 pagination 字段）
+	sb.WriteString(fmt.Sprintf("页数：%d 页面数目：%d，总数：%d，总页数：%d\n",
+		pg.Page, pg.PageSize, pg.Total, pg.TotalPages))
 	return strings.TrimSpace(sb.String())
 }
 
