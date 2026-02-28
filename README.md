@@ -36,8 +36,6 @@
   | [onebot-kotlin](https://github.com/yyuueexxiinngg/onebot-kotlin) | [Mirai](https://github.com/mamoe/mirai) | yyuueexxiinngg | 不再积极维护 |
   | [oicq/http-api](https://github.com/takayama-lily/oicq/tree/master/http-api) | [OICQ](https://github.com/takayama-lily/oicq) | takayama | 已归档不再维护 |
 
-  [![Star Trend](https://api.star-history.com/svg?repos=FloatTech/ZeroBot-Plugin&type=Timeline)](https://seladb.github.io/StarTrack-js/#/preload?r=FloatTech,ZeroBot-Plugin)
-
 </div>
 
 > 专为[后 go-cqhttp 时代](https://github.com/Mrs4s/go-cqhttp/issues/2471)开发迁移的`类zbp`新机器人现已出炉，基于官方api，稳定不风控: [NanoBot-Plugin](https://github.com/FloatTech/NanoBot-Plugin)
