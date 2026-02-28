@@ -623,26 +623,6 @@ print("run[CQ:image,file="+j["img"]+"]")
 
 </details>
 <details>
-  <summary>DeepDanbooru二次元图标签识别</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/danbooru"`
-
-  - [x] 鉴赏图片[图片]
-
-</details>
-<details>
-  <summary>嘉然</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/diana"`
-
-  - [x] 小作文
-
-  - [x] 发大病
-
-  - [x] 教你一篇小作文[作文]
-
-</details>
-<details>
   <summary>程序员做饭指南</summary>
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/dish"`
@@ -708,14 +688,6 @@ print("run[CQ:image,file="+j["img"]+"]")
   - [x] [同意|拒绝][申请|邀请][flag]
 
   - flag跟随事件一起发送, 默认同意主人的事件
-
-</details>
-<details>
-  <summary>渲染任意文字到图片</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/font"`
-
-  - [x] (用[终末体|终末变体|紫罗兰体|樱酥体|Consolas体|粗苹方体|未来荧黑体|Gugi体|八丸体|Impact体|猫啃体|苹方体])渲染(抖动)文字xxx
 
 </details>
 <details>
@@ -833,16 +805,6 @@ print("run[CQ:image,file="+j["img"]+"]")
   - [x] [卡组代码xxx]
 
   - 注：更多搜卡指令参数：https://hs.fbigame.com/misc/searchhelp
-
-</details>
-<details>
-  <summary>百人一首</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/hyaku"`
-
-  - [x] 百人一首
-
-  - [x] 百人一首之n
 
 </details>
 <details>

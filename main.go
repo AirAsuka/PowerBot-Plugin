@@ -66,49 +66,44 @@ import (
 	//                          vvvvvvvvvvvvvv                          //
 	//                               vvvv                               //
 
-	_ "github.com/FloatTech/ZeroBot-Plugin/custom"                   // 自定义插件合集
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus"           // Amongus
+	_ "github.com/FloatTech/ZeroBot-Plugin/custom"                   // 自定义插件合集 
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus"           // Amongus √
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/ahsai"             // ahsai tts
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/aifalse"           // 服务器监控
-	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/aiimage"           // AI画图
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/aiwife"            // 随机老婆
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/alipayvoice"       // 支付宝到账语音
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/animetrace"        // AnimeTrace 动画/Galgame识别
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/autowithdraw"      // 触发者撤回时也自动撤回
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/aifalse"           // 服务器监控 √
+	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/aiimage"           // AI画图 
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/aiwife"            // 随机老婆 √
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/alipayvoice"       // 支付宝到账语音 √
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/animetrace"        // AnimeTrace 动画/Galgame识别 √
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/autowithdraw"      // 触发者撤回时也自动撤回 √
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/base16384"         // base16384加解密
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/base64gua"         // base64卦加解密
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/baseamasiro"       // base天城文加解密
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/bilibili"          // b站相关
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/bilibiliparse"     // b站相关
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/bilibilipush"      // b站相关
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/choose"            // 选择困难症帮手
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/chouxianghua"      // 说抽象话
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/chrev"             // 英文字符翻转
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/choose"            // 选择困难症帮手 √
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/chouxianghua"      // 说抽象话 √
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/chrev"             // 英文字符翻转 √
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/coser"             // 三次元小姐姐
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/cpstory"           // cp短打
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/crypter"           // 奇怪语言加解密
-	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/dailynews"         // 今日早报
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/danbooru"          // DeepDanbooru二次元图标签识别
-	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/diana"             // 嘉心糖发病
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/dish"              // 程序员做饭指南
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/drawlots"          // 多功能抽签
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/emojimix"          // 合成emoji
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/cpstory"           // cp短打 √
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/crypter"           // 奇怪语言加解密 
+	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/dailynews"         // 今日早报 ×
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/dish"              // 程序员做饭指南 √
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/drawlots"          // 多功能抽签 √
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/emojimix"          // 合成emoji √
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/emozi"             // 颜文字抽象转写
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/event"             // 好友申请群聊邀请事件处理
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/font"              // 渲染任意文字到图片
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/fortune"           // 运势
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/funny"             // 笑话
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/event"             // 好友申请群聊邀请事件处理 ×
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/fortune"           // 运势
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/funny"             // 笑话
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/genshin"           // 原神抽卡
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/gif"               // 制图
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/github"            // 搜索GitHub仓库
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/guessmusic"        // 猜歌
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/handou"            // 猜成语
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/hitokoto"          // 一言
-	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/hs"                // 炉石
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/hyaku"             // 百人一首
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/inject"            // 注入指令
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/jandan"            // 煎蛋网无聊图
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/jptingroom"        // 日语听力学习材料
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/handou"            // 猜成语 √
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/hitokoto"          // 一言 √
+	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/hs"                // 炉石 ×
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/inject"            // 注入指令 √
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/jandan"            // 煎蛋网无聊图
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/jptingroom"        // 日语听力学习材料
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/kfccrazythursday"  // 疯狂星期四
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/llm"               // 大模型聊天和群聊总结
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/lolicon"           // lolicon 随机图片

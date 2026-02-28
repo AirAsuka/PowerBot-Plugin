@@ -69,7 +69,7 @@ func init() {
 			msg = append(msg, message.Text("- 鱼竿数量请使用钓鱼背包查看"))
 			ctx.Send(msg)
 			// 等待用户下一步选择
-			recv, cancel := zero.NewFutureEvent("message", 999, false, zero.RegexRule(`^(取消|\d+)$`), zero.CheckUser(ctx.Event.UserID)).Repeat()
+			recv, cancel := zero.NewFutureEvent("message", 999, false, plainTextOrNumberRule("取消"), zero.CheckUser(ctx.Event.UserID)).Repeat()
 			defer cancel()
 			for {
 				select {
@@ -81,7 +81,7 @@ func init() {
 					)
 					return
 				case e := <-recv:
-					nextcmd := e.Event.Message.String()
+					nextcmd := strings.TrimSpace(e.Event.Message.ExtractPlainText())
 					if nextcmd == "取消" {
 						ctx.Send(
 							message.ReplyWithMessage(ctx.Event.MessageID,
@@ -205,7 +205,7 @@ func init() {
 			msg = append(msg, message.Text("————————\n输入对应序号进行修复,或回复“取消”取消"))
 			ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, msg...))
 			// 等待用户下一步选择
-			recv, cancel := zero.NewFutureEvent("message", 999, false, zero.RegexRule(`^(取消|\d+)$`), zero.CheckUser(ctx.Event.UserID)).Repeat()
+			recv, cancel := zero.NewFutureEvent("message", 999, false, plainTextOrNumberRule("取消"), zero.CheckUser(ctx.Event.UserID)).Repeat()
 			defer cancel()
 			for {
 				select {
@@ -217,7 +217,7 @@ func init() {
 					)
 					return
 				case e := <-recv:
-					nextcmd := e.Event.Message.String()
+					nextcmd := strings.TrimSpace(e.Event.Message.ExtractPlainText())
 					if nextcmd == "取消" {
 						ctx.Send(
 							message.ReplyWithMessage(ctx.Event.MessageID,
@@ -397,7 +397,22 @@ func init() {
 			msg = append(msg, message.Text("- 输入“梭哈“，合成所有鱼竿"))
 			ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, msg...))
 			// 等待用户下一步选择
-			recv, cancel := zero.NewFutureEvent("message", 999, false, zero.RegexRule(`^(梭哈|取消|\d+ \d+ \d+)$`), zero.CheckUser(ctx.Event.UserID)).Repeat()
+			recv, cancel := zero.NewFutureEvent("message", 999, false, func(ctx *zero.Ctx) bool {
+				msg := strings.TrimSpace(ctx.Event.Message.ExtractPlainText())
+				if msg == "梭哈" || msg == "取消" {
+					return true
+				}
+				parts := strings.Split(msg, " ")
+				if len(parts) == 3 {
+					for _, p := range parts {
+						if _, err := strconv.Atoi(p); err != nil {
+							return false
+						}
+					}
+					return true
+				}
+				return false
+			}, zero.CheckUser(ctx.Event.UserID)).Repeat()
 			defer cancel()
 			for {
 				select {
@@ -409,7 +424,7 @@ func init() {
 					)
 					return
 				case e := <-recv:
-					nextcmd := e.Event.Message.String()
+					nextcmd := strings.TrimSpace(e.Event.Message.ExtractPlainText())
 					if nextcmd == "取消" {
 						ctx.Send(
 							message.ReplyWithMessage(ctx.Event.MessageID,

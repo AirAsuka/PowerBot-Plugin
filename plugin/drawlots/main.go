@@ -120,7 +120,7 @@ func init() {
 		}
 		ctx.Send(message.ReplyWithMessage(id, message.Image("file:///"+datapath+lotsName+"."+fileInfo.lotsType)))
 	})
-	en.OnRegex(`^加(.+)签.*`, zero.SuperUserPermission, zero.MustProvidePicture).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+	en.OnRegex(`^加(.+)签.*`, zero.MustProvidePicture).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		id := ctx.Event.MessageID
 		lotsName := ctx.State["regex_matched"].([]string)[1]
 		if lotsName == "" {
