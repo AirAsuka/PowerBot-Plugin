@@ -95,7 +95,7 @@ import (
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/event"             // 好友申请群聊邀请事件处理 ×
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/fortune"           // 运势
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/funny"             // 笑话
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/genshin"           // 原神抽卡
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/genshin"           // 原神抽卡
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/gif"               // 制图
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/guessmusic"        // 猜歌
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/handou"            // 猜成语 √
