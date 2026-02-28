@@ -115,7 +115,7 @@ import (
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/movies"            // 电影插件
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/moyu"              // 摸鱼
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/moyucalendar"      // 摸鱼人日历
-	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/music"             // 点歌
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/music"             // 点歌
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/nativesetu"        // 本地涩图
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/nbnhhsh"           // 拼音首字母缩写释义工具
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/nihongo"           // 日语语法学习
