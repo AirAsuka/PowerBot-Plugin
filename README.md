@@ -1,5 +1,4 @@
 <div align="center">
-  <img src=".github/hua_nobg_512.gif" alt="椛" width = "256">
   <img src="https://github.com/FloatTech/ZeroBot-Plugin/assets/41315874/93fb795d-e519-45a6-a654-076fd6ac54ae" alt="zbp-uwu" width = "400">
   <br>
 
@@ -476,51 +475,6 @@ print("run[CQ:image,file="+j["img"]+"]")
 
 </details>
 <details>
-  <summary>百度内容审核</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/baiduaudit"`
-
-  - [x] 获取BDAkey
-
-  - [x] 配置BDAKey [API Key] [Secret Key]
-
-  - [x] 获取BDAkey
-
-  - [x] [开启|关闭]内容审核
-
-  - [x] [开启|关闭]撤回提示
-
-  - [x] [开启|关闭]详细提示
-
-  - [x] [开启|关闭]撤回禁言
-
-  - [x] [开启|关闭]禁言累加
-
-  - [x] [开启|关闭]文本检测
-
-  - [x] [开启|关闭]图像检测
-
-  - [x] 设置最大禁言时间[分钟，默认:60,最大43200]
-
-  - [x] 设置每次累加时间[分钟，默认:1]
-
-  - [x] 设置撤回禁言时间[分钟，默认:1]
-
-  - [x] 查看检测类型
-
-  - [x] 查看检测配置
-
-  - [x] 测试文本检测[文本内容]
-
-  - [x] 测试图像检测[图片]
-
-  - [x] 设置检测类型[类型编号]
-
-  - [x] 设置不检测类型[类型编号]
-
-    检测类型编号列表:[1:违禁违规|2:文本色情|3:敏感信息|4:恶意推广|5:低俗辱骂|6:恶意推广-联系方式|7:恶意推广-软文推广]
-</details>
-<details>
   <summary>base64卦加解密</summary>
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/base64gua"`
@@ -668,26 +622,6 @@ print("run[CQ:image,file="+j["img"]+"]")
 
 </details>
 <details>
-  <summary>DeepDanbooru二次元图标签识别</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/danbooru"`
-
-  - [x] 鉴赏图片[图片]
-
-</details>
-<details>
-  <summary>嘉然</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/diana"`
-
-  - [x] 小作文
-
-  - [x] 发大病
-
-  - [x] 教你一篇小作文[作文]
-
-</details>
-<details>
   <summary>程序员做饭指南</summary>
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/dish"`
@@ -753,14 +687,6 @@ print("run[CQ:image,file="+j["img"]+"]")
   - [x] [同意|拒绝][申请|邀请][flag]
 
   - flag跟随事件一起发送, 默认同意主人的事件
-
-</details>
-<details>
-  <summary>渲染任意文字到图片</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/font"`
-
-  - [x] (用[终末体|终末变体|紫罗兰体|樱酥体|Consolas体|粗苹方体|未来荧黑体|Gugi体|八丸体|Impact体|猫啃体|苹方体])渲染(抖动)文字xxx
 
 </details>
 <details>
@@ -878,16 +804,6 @@ print("run[CQ:image,file="+j["img"]+"]")
   - [x] [卡组代码xxx]
 
   - 注：更多搜卡指令参数：https://hs.fbigame.com/misc/searchhelp
-
-</details>
-<details>
-  <summary>百人一首</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/hyaku"`
-
-  - [x] 百人一首
-
-  - [x] 百人一首之n
 
 </details>
 <details>

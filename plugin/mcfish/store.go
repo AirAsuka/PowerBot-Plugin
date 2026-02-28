@@ -21,6 +21,33 @@ import (
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
+// plainTextRule 创建基于纯文本的匹配规则,兼容 QQ 引用回复消息
+func plainTextRule(candidates ...string) zero.Rule {
+	return func(ctx *zero.Ctx) bool {
+		msg := strings.TrimSpace(ctx.Event.Message.ExtractPlainText())
+		for _, c := range candidates {
+			if msg == c {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// plainTextOrNumberRule 匹配指定文本或纯数字,兼容 QQ 引用回复消息
+func plainTextOrNumberRule(candidates ...string) zero.Rule {
+	return func(ctx *zero.Ctx) bool {
+		msg := strings.TrimSpace(ctx.Event.Message.ExtractPlainText())
+		for _, c := range candidates {
+			if msg == c {
+				return true
+			}
+		}
+		_, err := strconv.Atoi(msg)
+		return err == nil && msg != ""
+	}
+}
+
 var (
 	storeLimiter = rate.NewManager[int64](time.Second*3, 1)
 	refresh      = false
@@ -114,7 +141,7 @@ func init() {
 			ctx.Send(msg)
 			// 等待用户下一步选择
 			sell := false
-			recv, cancel := zero.NewFutureEvent("message", 999, false, zero.RegexRule(`^(取消|\d+)$`), zero.CheckUser(ctx.Event.UserID)).Repeat()
+			recv, cancel := zero.NewFutureEvent("message", 999, false, plainTextOrNumberRule("取消"), zero.CheckUser(ctx.Event.UserID)).Repeat()
 			defer cancel()
 			for {
 				select {
@@ -126,7 +153,7 @@ func init() {
 					)
 					return
 				case e := <-recv:
-					nextcmd := e.Event.Message.String()
+					nextcmd := strings.TrimSpace(e.Event.Message.ExtractPlainText())
 					if nextcmd == "取消" {
 						ctx.Send(
 							message.ReplyWithMessage(ctx.Event.MessageID,
@@ -168,7 +195,7 @@ func init() {
 		}
 		ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("是否接受商店将以", pice*number*8/10, "收购", number, "个", thingName, "?\n回答\"是\"或\"否\"")))
 		// 等待用户下一步选择
-		recv, cancel1 := zero.NewFutureEvent("message", 999, false, zero.RegexRule(`^(是|否)$`), zero.CheckUser(ctx.Event.UserID)).Repeat()
+		recv, cancel1 := zero.NewFutureEvent("message", 999, false, plainTextRule("是", "否"), zero.CheckUser(ctx.Event.UserID)).Repeat()
 		defer cancel1()
 		buy := false
 		for {
@@ -177,7 +204,7 @@ func init() {
 				ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("等待超时,取消出售")))
 				return
 			case e := <-recv:
-				nextcmd := e.Event.Message.String()
+				nextcmd := strings.TrimSpace(e.Event.Message.ExtractPlainText())
 				if nextcmd == "否" {
 					ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("已取消出售")))
 					return
@@ -203,7 +230,7 @@ func init() {
 			if numberOfRecord > 0 {
 				ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("是否使用唱片让价格翻倍?\n回答\"是\"或\"否\"")))
 				// 等待用户下一步选择
-				recv, cancel2 := zero.NewFutureEvent("message", 999, false, zero.RegexRule(`^(是|否)$`), zero.CheckUser(ctx.Event.UserID)).Repeat()
+				recv, cancel2 := zero.NewFutureEvent("message", 999, false, plainTextRule("是", "否"), zero.CheckUser(ctx.Event.UserID)).Repeat()
 				defer cancel2()
 				use := false
 				checkTime := false
@@ -212,7 +239,7 @@ func init() {
 					case <-time.After(time.Second * 60):
 						checkTime = true
 					case e := <-recv:
-						nextcmd := e.Event.Message.String()
+						nextcmd := strings.TrimSpace(e.Event.Message.ExtractPlainText())
 						if nextcmd == "是" {
 							use = true
 						}
@@ -346,7 +373,7 @@ func init() {
 
 		ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("是否接受回收站将以", pice, "收购全部垃圾", "?\n回答\"是\"或\"否\"")))
 		// 等待用户下一步选择
-		recv, cancel1 := zero.NewFutureEvent("message", 999, false, zero.RegexRule(`^(是|否)$`), zero.CheckUser(ctx.Event.UserID)).Repeat()
+		recv, cancel1 := zero.NewFutureEvent("message", 999, false, plainTextRule("是", "否"), zero.CheckUser(ctx.Event.UserID)).Repeat()
 		defer cancel1()
 		buy := false
 		for {
@@ -355,7 +382,7 @@ func init() {
 				ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("等待超时,取消出售垃圾")))
 				return
 			case e := <-recv:
-				nextcmd := e.Event.Message.String()
+				nextcmd := strings.TrimSpace(e.Event.Message.ExtractPlainText())
 				if nextcmd == "否" {
 					ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("已取消出售")))
 					return
@@ -497,7 +524,7 @@ func init() {
 			ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, msg...))
 			// 等待用户下一步选择
 			sell := false
-			recv, cancel := zero.NewFutureEvent("message", 999, false, zero.RegexRule(`^(取消|\d+)$`), zero.CheckUser(ctx.Event.UserID)).Repeat()
+			recv, cancel := zero.NewFutureEvent("message", 999, false, plainTextOrNumberRule("取消"), zero.CheckUser(ctx.Event.UserID)).Repeat()
 			defer cancel()
 			for {
 				select {
@@ -509,7 +536,7 @@ func init() {
 					)
 					return
 				case e := <-recv:
-					nextcmd := e.Event.Message.String()
+					nextcmd := strings.TrimSpace(e.Event.Message.ExtractPlainText())
 					if nextcmd == "取消" {
 						ctx.Send(
 							message.ReplyWithMessage(ctx.Event.MessageID,
@@ -571,7 +598,7 @@ func init() {
 
 		ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("你确定花费", price, "购买", number, "个", thingName, "?", msg, "\n回答\"是\"或\"否\"")))
 		// 等待用户下一步选择
-		recv, cancel1 := zero.NewFutureEvent("message", 999, false, zero.RegexRule(`^(是|否)$`), zero.CheckUser(ctx.Event.UserID)).Repeat()
+		recv, cancel1 := zero.NewFutureEvent("message", 999, false, plainTextRule("是", "否"), zero.CheckUser(ctx.Event.UserID)).Repeat()
 		defer cancel1()
 		buy := false
 		for {
@@ -580,7 +607,7 @@ func init() {
 				ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("等待超时,取消购买")))
 				return
 			case e := <-recv:
-				nextcmd := e.Event.Message.String()
+				nextcmd := strings.TrimSpace(e.Event.Message.ExtractPlainText())
 				if nextcmd == "否" {
 					ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("已取消购买")))
 					return

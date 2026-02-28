@@ -7,6 +7,8 @@ import (
 	"image"
 	"image/draw"
 	"image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"math/rand"
 	"os"
@@ -118,7 +120,7 @@ func init() {
 		}
 		ctx.Send(message.ReplyWithMessage(id, message.Image("file:///"+datapath+lotsName+"."+fileInfo.lotsType)))
 	})
-	en.OnRegex(`^加(.+)签.*`, zero.SuperUserPermission, zero.MustProvidePicture).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+	en.OnRegex(`^加(.+)签.*`, zero.MustProvidePicture).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		id := ctx.Event.MessageID
 		lotsName := ctx.State["regex_matched"].([]string)[1]
 		if lotsName == "" {
@@ -130,22 +132,49 @@ func init() {
 		if err != nil {
 			return
 		}
-		im, err := gif.DecodeAll(bytes.NewReader(gifdata))
+		// 尝试解析为GIF
+		im, gifErr := gif.DecodeAll(bytes.NewReader(gifdata))
+		if gifErr == nil {
+			// GIF格式，保存为gif文件
+			fileName := datapath + "/" + lotsName + ".gif"
+			err = file.DownloadTo(picURL, fileName)
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR: ", err))
+				return
+			}
+			lotsList[lotsName] = info{
+				lotsType: "gif",
+				quantity: len(im.Image),
+			}
+			ctx.Send(message.ReplyWithMessage(id, message.Text("成功添加GIF签！共", strconv.Itoa(len(im.Image)), "签")))
+			return
+		}
+		// 非GIF格式，尝试识别为其他图片格式(png/jpeg等)
+		_, format, err := image.DecodeConfig(bytes.NewReader(gifdata))
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: 不支持的图片格式"))
+			return
+		}
+		// 保存到文件夹中作为图包签
+		dirPath := datapath + "/" + lotsName
+		err = os.MkdirAll(dirPath, 0755)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		fileName := datapath + "/" + lotsName + ".gif"
-		err = file.DownloadTo(picURL, fileName)
+		existFiles, _ := os.ReadDir(dirPath)
+		fileName := dirPath + "/" + strconv.Itoa(len(existFiles)+1) + "." + format
+		err = os.WriteFile(fileName, gifdata, 0644)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
+		existFiles, _ = os.ReadDir(dirPath)
 		lotsList[lotsName] = info{
-			lotsType: "gif",
-			quantity: len(im.Image),
+			lotsType: "folder",
+			quantity: len(existFiles),
 		}
-		ctx.Send(message.ReplyWithMessage(id, message.Text("成功！")))
+		ctx.Send(message.ReplyWithMessage(id, message.Text("成功添加图片签！当前共", strconv.Itoa(len(existFiles)), "签")))
 	})
 	en.OnRegex(`^删(.+)签$`, zero.SuperUserPermission).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		id := ctx.Event.MessageID
