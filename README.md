@@ -1366,16 +1366,6 @@ print("run[CQ:image,file="+j["img"]+"]")
 
 </details>
 <details>
-  <summary>据意查句</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/wantquotes"`
-
-  - [x] 据意查句 大海
-  
-  - [x] 登录据意查句 
-
-</details>
-<details>
   <summary>星际战甲</summary>
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/warframeapi"`
@@ -1409,20 +1399,6 @@ print("run[CQ:image,file="+j["img"]+"]")
 
 </details>
 <details>
-  <summary>猜单词</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/wordle"`
-
-  - [x] 个人猜单词
-
-  - [x] 团队猜单词
-
-  - [x] 团队六阶猜单词
-
-  - [x] 团队七阶猜单词
-
-</details>
-<details>
   <summary>鬼东西</summary>
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/wtf"`
@@ -1448,42 +1424,6 @@ print("run[CQ:image,file="+j["img"]+"]")
   - [x] gal表情包[xxx]
 
   - [x] 更新gal
-
-</details>
-<details>
-  <summary>遇见API</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/yujn"`
-  
-  - [x] 小姐姐视频
-  - [x] 小姐姐视频2
-  - [x] 黑丝视频
-  - [x] 白丝视频
-  - [x] 欲梦视频
-  - [x] 甜妹视频
-  - [x] 双倍快乐
-  - [x] 纯情女高
-  - [x] 萝莉视频
-  - [x] 玉足视频
-  - [x] 帅哥视频
-  - [x] 热舞视频
-  - [x] 吊带视频
-  - [x] 汉服视频
-  - [x] 极品狱卒
-  - [x] 清纯视频
-  - [x] 快手变装
-  - [x] 抖音变装
-  - [x] 萌娃视频
-  - [x] 穿搭视频
-  - [x] 完美身材
-  - [x] 御姐撒娇
-  - [x] 绿茶语音
-  - [x] 怼人语音
-  - [x] 随机骚话
-  - [x] 随机污句子
-  - [x] 随机美句
-  - [x] 土味情话   
-  - [x] 让[lulu]说我测尼玛
 
 </details>
 
