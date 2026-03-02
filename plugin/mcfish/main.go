@@ -28,8 +28,11 @@ type fishdb struct {
 // FishLimit 钓鱼次数上限
 const FishLimit = 50
 
+// StorePoleLimit 商店可收购鱼竿条目上限
+const StorePoleLimit = 25
+
 // version 规则版本号
-const version = "5.6.2"
+const version = "5.6.2"d
 
 // 各物品信息
 type jsonInfo struct {

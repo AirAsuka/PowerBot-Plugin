@@ -12,6 +12,7 @@ import (
 	fcext "github.com/FloatTech/floatbox/ctxext"
 	"github.com/FloatTech/floatbox/web"
 	sql "github.com/FloatTech/sqlite"
+	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/img/text"
@@ -49,9 +50,14 @@ var (
 	})
 	engine = control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
-		Brief:            "AmongUs战绩查询",
+		Brief:            "AU战绩查询",
 		Help: "- 录入信息 xxxx (绑定你的AmongUs ID)\n" +
-			"- 查询战绩 (查询你的AmongUs战绩)",
+			"- 查询战绩 (查询你的AmongUs战绩)\n" +
+			"- 最近n场 (查询最近n场对局，n为1-10)\n" +
+			"- 游戏详情 <gameId> (查询对局详情，不传gameId默认取最近1场)\n" +
+			"- 查看职业列表 (查看所有职业阵营分类)\n" +
+			"- 查看<阵营名> (查看指定阵营的职业列表)\n" +
+			"- 小知识 <职业名> (查询职业技能描述)",
 		PrivateDataFolder: "amongus",
 	})
 )
@@ -151,5 +157,40 @@ func init() {
 				return
 			}
 			ctx.SendChain(message.Image("base64://" + binary.BytesToString(imgData)))
+		})
+
+	// 查看职业列表
+	engine.OnFullMatch("查看职业列表").SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			ctx.SendChain(message.Text("请输入：查看船员阵营/内鬼阵营/中立阵营/附加职业/幽灵类职业"))
+		})
+
+	// 查看xxx阵营 / 查看附加职业 / 查看幽灵类职业
+	engine.OnRegex(`^查看(船员阵营|内鬼阵营|中立阵营|附加职业|幽灵类职业)$`).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			categoryName := ctx.State["regex_matched"].([]string)[1]
+			result := amongusdict.GetCategoryRoles(categoryName)
+			if result == "" {
+				ctx.SendChain(message.Text("未找到该阵营分类"))
+				return
+			}
+			ctx.SendChain(message.Text(result))
+		})
+
+	// 小知识 <职业名>
+	engine.OnRegex(`^小知识\s+(.+)$`).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			roleName := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
+			if roleName == "" {
+				return
+			}
+			desc := amongusdict.GetRoleDesc(roleName)
+			if desc == "" {
+				ctx.SendChain(message.Text("未找到职业「", roleName, "」的描述信息"))
+				return
+			}
+			// 将 \n 替换为真正的换行
+			desc = strings.ReplaceAll(desc, `\n`, "\n")
+			ctx.SendChain(message.Text("══ ", roleName, " ══\n\n", desc))
 		})
 }

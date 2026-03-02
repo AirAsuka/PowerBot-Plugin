@@ -1,5 +1,4 @@
 <div align="center">
-  <img src=".github/hua_nobg_512.gif" alt="椛" width = "256">
   <img src="https://github.com/FloatTech/ZeroBot-Plugin/assets/41315874/93fb795d-e519-45a6-a654-076fd6ac54ae" alt="zbp-uwu" width = "400">
   <br>
 
@@ -10,7 +9,7 @@
   ZeroBot-Plugin 是 ZeroBot 的 实用插件合集<br><br>
 
 
-  <img src="https://counter.seku.su/cmoe?name=ZeroBot-Plugin&theme=r34" /><br>
+  <img src="https://count.getloli.com/@power?name=power&theme=booru-helltaker&padding=7&offset=0&align=top&scale=1&pixelated=1&darkmode=auto" /><br>
 
   [![miraigo](https://img.shields.io/badge/OneBot-MiraiGo-green.svg?style=social&logo=appveyor)](https://github.com/Mrs4s/MiraiGo)
   [![oicq](https://img.shields.io/badge/OneBot-OICQ-green.svg?style=social&logo=appveyor)](https://github.com/takayama-lily/oicq)
@@ -36,8 +35,6 @@
   | [go-cqhttp](https://github.com/Mrs4s/go-cqhttp) | [MiraiGo](https://github.com/Mrs4s/MiraiGo) | Mrs4s | 因签名原因不再维护 |
   | [onebot-kotlin](https://github.com/yyuueexxiinngg/onebot-kotlin) | [Mirai](https://github.com/mamoe/mirai) | yyuueexxiinngg | 不再积极维护 |
   | [oicq/http-api](https://github.com/takayama-lily/oicq/tree/master/http-api) | [OICQ](https://github.com/takayama-lily/oicq) | takayama | 已归档不再维护 |
-
-  [![Star Trend](https://api.star-history.com/svg?repos=FloatTech/ZeroBot-Plugin&type=Timeline)](https://seladb.github.io/StarTrack-js/#/preload?r=FloatTech,ZeroBot-Plugin)
 
 </div>
 
@@ -476,51 +473,6 @@ print("run[CQ:image,file="+j["img"]+"]")
 
 </details>
 <details>
-  <summary>百度内容审核</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/baiduaudit"`
-
-  - [x] 获取BDAkey
-
-  - [x] 配置BDAKey [API Key] [Secret Key]
-
-  - [x] 获取BDAkey
-
-  - [x] [开启|关闭]内容审核
-
-  - [x] [开启|关闭]撤回提示
-
-  - [x] [开启|关闭]详细提示
-
-  - [x] [开启|关闭]撤回禁言
-
-  - [x] [开启|关闭]禁言累加
-
-  - [x] [开启|关闭]文本检测
-
-  - [x] [开启|关闭]图像检测
-
-  - [x] 设置最大禁言时间[分钟，默认:60,最大43200]
-
-  - [x] 设置每次累加时间[分钟，默认:1]
-
-  - [x] 设置撤回禁言时间[分钟，默认:1]
-
-  - [x] 查看检测类型
-
-  - [x] 查看检测配置
-
-  - [x] 测试文本检测[文本内容]
-
-  - [x] 测试图像检测[图片]
-
-  - [x] 设置检测类型[类型编号]
-
-  - [x] 设置不检测类型[类型编号]
-
-    检测类型编号列表:[1:违禁违规|2:文本色情|3:敏感信息|4:恶意推广|5:低俗辱骂|6:恶意推广-联系方式|7:恶意推广-软文推广]
-</details>
-<details>
   <summary>base64卦加解密</summary>
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/base64gua"`
@@ -668,26 +620,6 @@ print("run[CQ:image,file="+j["img"]+"]")
 
 </details>
 <details>
-  <summary>DeepDanbooru二次元图标签识别</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/danbooru"`
-
-  - [x] 鉴赏图片[图片]
-
-</details>
-<details>
-  <summary>嘉然</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/diana"`
-
-  - [x] 小作文
-
-  - [x] 发大病
-
-  - [x] 教你一篇小作文[作文]
-
-</details>
-<details>
   <summary>程序员做饭指南</summary>
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/dish"`
@@ -753,14 +685,6 @@ print("run[CQ:image,file="+j["img"]+"]")
   - [x] [同意|拒绝][申请|邀请][flag]
 
   - flag跟随事件一起发送, 默认同意主人的事件
-
-</details>
-<details>
-  <summary>渲染任意文字到图片</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/font"`
-
-  - [x] (用[终末体|终末变体|紫罗兰体|樱酥体|Consolas体|粗苹方体|未来荧黑体|Gugi体|八丸体|Impact体|猫啃体|苹方体])渲染(抖动)文字xxx
 
 </details>
 <details>
@@ -878,16 +802,6 @@ print("run[CQ:image,file="+j["img"]+"]")
   - [x] [卡组代码xxx]
 
   - 注：更多搜卡指令参数：https://hs.fbigame.com/misc/searchhelp
-
-</details>
-<details>
-  <summary>百人一首</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/hyaku"`
-
-  - [x] 百人一首
-
-  - [x] 百人一首之n
 
 </details>
 <details>
@@ -1452,16 +1366,6 @@ print("run[CQ:image,file="+j["img"]+"]")
 
 </details>
 <details>
-  <summary>据意查句</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/wantquotes"`
-
-  - [x] 据意查句 大海
-  
-  - [x] 登录据意查句 
-
-</details>
-<details>
   <summary>星际战甲</summary>
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/warframeapi"`
@@ -1495,20 +1399,6 @@ print("run[CQ:image,file="+j["img"]+"]")
 
 </details>
 <details>
-  <summary>猜单词</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/wordle"`
-
-  - [x] 个人猜单词
-
-  - [x] 团队猜单词
-
-  - [x] 团队六阶猜单词
-
-  - [x] 团队七阶猜单词
-
-</details>
-<details>
   <summary>鬼东西</summary>
 
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/wtf"`
@@ -1534,42 +1424,6 @@ print("run[CQ:image,file="+j["img"]+"]")
   - [x] gal表情包[xxx]
 
   - [x] 更新gal
-
-</details>
-<details>
-  <summary>遇见API</summary>
-
-  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/yujn"`
-  
-  - [x] 小姐姐视频
-  - [x] 小姐姐视频2
-  - [x] 黑丝视频
-  - [x] 白丝视频
-  - [x] 欲梦视频
-  - [x] 甜妹视频
-  - [x] 双倍快乐
-  - [x] 纯情女高
-  - [x] 萝莉视频
-  - [x] 玉足视频
-  - [x] 帅哥视频
-  - [x] 热舞视频
-  - [x] 吊带视频
-  - [x] 汉服视频
-  - [x] 极品狱卒
-  - [x] 清纯视频
-  - [x] 快手变装
-  - [x] 抖音变装
-  - [x] 萌娃视频
-  - [x] 穿搭视频
-  - [x] 完美身材
-  - [x] 御姐撒娇
-  - [x] 绿茶语音
-  - [x] 怼人语音
-  - [x] 随机骚话
-  - [x] 随机污句子
-  - [x] 随机美句
-  - [x] 土味情话   
-  - [x] 让[lulu]说我测尼玛
 
 </details>
 
