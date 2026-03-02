@@ -5,20 +5,16 @@ import (
 	"bytes"
 	"errors"
 	"image"
-	"image/draw"
 	"image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"io"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
 
-	fcext "github.com/FloatTech/floatbox/ctxext"
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/web"
-	"github.com/FloatTech/imgfactory"
 	ctrl "github.com/FloatTech/zbpctrl"
 	control "github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
@@ -49,7 +45,7 @@ var (
 		Brief:            "多功能抽签",
 		Help: "支持图包文件夹和gif抽签\n" +
 			"-------------\n" +
-			"- (刷新)抽签列表\n- 抽[签名]签\n- 抽群友签\n- 看[gif签名]签\n- 加[签名]签[gif图片]\n- 删[gif签名]签",
+			"- (刷新)抽签列表\n- 抽[图包签名]签(仅图包)\n- 抽群友签(随机图包)\n- 看[gif签名]签(仅gif)\n- 加[签名]签[图片/gif]\n- 删[gif签名]签",
 		PrivateDataFolder: "drawlots",
 	}).ApplySingle(ctxext.DefaultSingle)
 	datapath = file.BOTPATH + "/" + en.DataFolder()
@@ -79,45 +75,36 @@ func init() {
 	})
 	en.OnRegex(`^抽(.+)签$`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		lotsType := ctx.State["regex_matched"].([]string)[1]
-		// 特殊处理: 抽群友签 - 从所有签的所有图片中随机获得一张
+		// 特殊处理: 抽群友签 - 从所有图包签中随机获得一张图片
 		if lotsType == "群友" {
 			if len(lotsList) == 0 {
 				ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("还没有任何签呢~")))
 				return
 			}
-			// 按签数加权随机选择一个签
+			// 只统计图包(folder)类型的签数
 			totalQuantity := 0
 			for _, fi := range lotsList {
-				totalQuantity += fi.quantity
+				if fi.lotsType == "folder" {
+					totalQuantity += fi.quantity
+				}
 			}
 			if totalQuantity == 0 {
-				ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("所有签都是空的呢~")))
+				ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("没有图包签可以抽呢~")))
 				return
 			}
 			randNum := rand.Intn(totalQuantity)
 			for name, fi := range lotsList {
+				if fi.lotsType != "folder" {
+					continue
+				}
 				randNum -= fi.quantity
 				if randNum < 0 {
-					if fi.lotsType == "folder" {
-						picPath, err := randFile(name, 3)
-						if err != nil {
-							ctx.SendChain(message.Text("ERROR: ", err))
-							return
-						}
-						ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Image("file:///"+picPath))
-					} else {
-						lotsImg, err := randGifFrame(name + "." + fi.lotsType)
-						if err != nil {
-							ctx.SendChain(message.Text("ERROR: ", err))
-							return
-						}
-						data, err := imgfactory.ToBytes(lotsImg)
-						if err != nil {
-							ctx.SendChain(message.Text("ERROR: ", err))
-							return
-						}
-						ctx.SendChain(message.Reply(ctx.Event.MessageID), message.ImageBytes(data))
+					picPath, err := randFile(name, 3)
+					if err != nil {
+						ctx.SendChain(message.Text("ERROR: ", err))
+						return
 					}
+					ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Image("file:///"+picPath))
 					return
 				}
 			}
@@ -128,27 +115,16 @@ func init() {
 			ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("才...才没有", lotsType, "签这种东西啦")))
 			return
 		}
-		if fileInfo.lotsType == "folder" {
-			picPath, err := randFile(lotsType, 3)
-			if err != nil {
-				ctx.SendChain(message.Text("ERROR: ", err))
-				return
-			}
-			ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Image("file:///"+picPath))
+		if fileInfo.lotsType != "folder" {
+			ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("GIF签请使用\"看", lotsType, "签\"查看哦~")))
 			return
 		}
-		lotsImg, err := randGif(lotsType+"."+fileInfo.lotsType, ctx.Event.UserID)
+		picPath, err := randFile(lotsType, 3)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		// 生成图片
-		data, err := imgfactory.ToBytes(lotsImg)
-		if err != nil {
-			ctx.SendChain(message.Text("ERROR: ", err))
-			return
-		}
-		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.ImageBytes(data))
+		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Image("file:///"+picPath))
 	})
 	en.OnRegex(`^看(.+)签$`, zero.UserOrGrpAdmin).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		id := ctx.Event.MessageID
@@ -303,96 +279,3 @@ func randFile(path string, indexMax int) (string, error) {
 	return "", errors.New("图包[" + path + "]不存在签内容！")
 }
 
-func randGifFrame(gifName string) (image.Image, error) {
-	name := datapath + gifName
-	f, err := os.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	im, err := gif.DecodeAll(f)
-	if err != nil {
-		_ = f.Close()
-		return nil, err
-	}
-	_, err = f.Seek(0, io.SeekStart)
-	if err != nil {
-		_ = f.Close()
-		return nil, err
-	}
-	config, err := gif.DecodeConfig(f)
-	_ = f.Close()
-	if err != nil {
-		return nil, err
-	}
-	if len(im.Image) == 0 {
-		return nil, errors.New("GIF签[" + gifName + "]没有帧内容")
-	}
-	// 随机选取一帧
-	frameIdx := rand.Intn(len(im.Image))
-	rect := image.Rect(0, 0, config.Width, config.Height)
-	if rect.Min == rect.Max {
-		var maxP image.Point
-		for _, frame := range im.Image {
-			maxF := frame.Bounds().Max
-			if maxP.X < maxF.X {
-				maxP.X = maxF.X
-			}
-			if maxP.Y < maxF.Y {
-				maxP.Y = maxF.Y
-			}
-		}
-		rect.Max = maxP
-	}
-	img := image.NewRGBA(rect)
-	// 从第0帧绘制到随机选中的帧，保证画面完整
-	for _, srcimg := range im.Image[:frameIdx+1] {
-		draw.Draw(img, srcimg.Bounds(), srcimg, srcimg.Rect.Min, draw.Over)
-	}
-	return img, nil
-}
-
-func randGif(gifName string, uid int64) (image.Image, error) {
-	name := datapath + gifName
-	file, err := os.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	im, err := gif.DecodeAll(file)
-	if err != nil {
-		return nil, err
-	}
-	_, err = file.Seek(0, io.SeekStart)
-	if err != nil {
-		return nil, err
-	}
-	config, err := gif.DecodeConfig(file)
-	if err != nil {
-		return nil, err
-	}
-	_ = file.Close()
-	// https://zhuanlan.zhihu.com/p/27718135
-	rect := image.Rect(0, 0, config.Width, config.Height)
-	if rect.Min == rect.Max {
-		var maxP image.Point
-		for _, frame := range im.Image {
-			maxF := frame.Bounds().Max
-			if maxP.X < maxF.X {
-				maxP.X = maxF.X
-			}
-			if maxP.Y < maxF.Y {
-				maxP.Y = maxF.Y
-			}
-		}
-		rect.Max = maxP
-	}
-	img := image.NewRGBA(rect)
-	b := fcext.RandSenderPerDayN(uid, len(im.Image)) + 1
-	a := 0
-	if b > 8 {
-		a = b - 8
-	}
-	for _, srcimg := range im.Image[a:b] {
-		draw.Draw(img, srcimg.Bounds(), srcimg, srcimg.Rect.Min, draw.Over)
-	}
-	return img, err
-}
