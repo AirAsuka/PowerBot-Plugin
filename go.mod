@@ -3,7 +3,6 @@ module github.com/FloatTech/ZeroBot-Plugin
 go 1.24.2
 
 require (
-	github.com/Baidu-AIP/golang-sdk v1.1.1
 	github.com/FloatTech/AnimeAPI v1.7.1-0.20251028071248-0c948e3db65c
 	github.com/FloatTech/floatbox v0.0.0-20251002074805-f95cbc7edb31
 	github.com/FloatTech/gg v1.1.3
@@ -20,7 +19,6 @@ require (
 	github.com/corona10/goimagehash v1.1.1-0.20240121134706-d8115886f360
 	github.com/davidscholberg/go-durationfmt v0.0.0-20170122144659-64843a2083d3
 	github.com/disintegration/imaging v1.6.2
-	github.com/fumiama/ahsai v0.1.1
 	github.com/fumiama/cron v1.3.0
 	github.com/fumiama/deepinfra v0.0.0-20251221163610-e98ee3ba437a
 	github.com/fumiama/go-base16384 v1.7.1
@@ -51,7 +49,6 @@ require (
 	golang.org/x/sys v0.39.0
 	golang.org/x/text v0.32.0
 )
-
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.0 // indirect
