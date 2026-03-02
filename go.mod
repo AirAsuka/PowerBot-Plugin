@@ -3,7 +3,6 @@ module github.com/FloatTech/ZeroBot-Plugin
 go 1.24.2
 
 require (
-	github.com/Baidu-AIP/golang-sdk v1.1.1
 	github.com/FloatTech/AnimeAPI v1.7.1-0.20251028071248-0c948e3db65c
 	github.com/FloatTech/floatbox v0.0.0-20251002074805-f95cbc7edb31
 	github.com/FloatTech/gg v1.1.3
@@ -20,7 +19,6 @@ require (
 	github.com/corona10/goimagehash v1.1.1-0.20240121134706-d8115886f360
 	github.com/davidscholberg/go-durationfmt v0.0.0-20170122144659-64843a2083d3
 	github.com/disintegration/imaging v1.6.2
-	github.com/fumiama/ahsai v0.1.1
 	github.com/fumiama/cron v1.3.0
 	github.com/fumiama/deepinfra v0.0.0-20251221163610-e98ee3ba437a
 	github.com/fumiama/go-base16384 v1.7.1
@@ -36,7 +34,6 @@ require (
 	github.com/guohuiyuan/music-lib v1.0.2-0.20260121020416-53f6cb24629d
 	github.com/jinzhu/gorm v1.9.16
 	github.com/jozsefsallai/gophersauce v1.0.1
-	github.com/kanrichan/resvg-go v0.0.2-0.20231001163256-63db194ca9f5
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/liuzl/gocc v0.0.0-20231231122217-0372e1059ca5
 	github.com/mmcdole/gofeed v1.3.0
@@ -53,7 +50,48 @@ require (
 	golang.org/x/text v0.32.0
 )
 
-require github.com/adamzy/cedar-go v0.0.0-20170805034717-80a9c64b256d // indirect
+require (
+	github.com/PuerkitoBio/goquery v1.8.0 // indirect
+	github.com/adamzy/cedar-go v0.0.0-20170805034717-80a9c64b256d // indirect
+	github.com/andybalholm/cascadia v1.3.1 // indirect
+	github.com/antchfx/xpath v1.3.5 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/ebitengine/purego v0.9.1 // indirect
+	github.com/ericpauley/go-quantize v0.0.0-20200331213906-ae555eb2afa4 // indirect
+	github.com/fumiama/go-simple-protobuf v0.2.0 // indirect
+	github.com/fumiama/gofastTEA v0.1.3 // indirect
+	github.com/fumiama/imgsz v0.0.4 // indirect
+	github.com/fumiama/orbyte v0.0.0-20251002065953-3bb358367eb5 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
+	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/liuzl/cedar-go v0.0.0-20170805034717-80a9c64b256d // indirect
+	github.com/liuzl/da v0.0.0-20180704015230-14771aad5b1d // indirect
+	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mmcdole/goxpp v1.1.1-0.20240225020742-a0c311522b23 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
+	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
+	github.com/pkumza/numcn v1.0.0 // indirect
+	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/tidwall/match v1.2.0 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tklauser/go-sysconf v0.3.16 // indirect
+	github.com/tklauser/numcpus v0.11.0 // indirect
+	github.com/yusufpapurcu/wmi v1.2.4 // indirect
+	golang.org/x/net v0.48.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+	modernc.org/libc v1.67.1 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
+	modernc.org/sqlite v1.41.0 // indirect
+)
 
 replace modernc.org/sqlite => github.com/fumiama/sqlite3 v1.29.10-simp
 
