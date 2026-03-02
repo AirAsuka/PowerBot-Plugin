@@ -23,7 +23,7 @@ var platformMap = map[string]func(string) (message.Segment, error){
 	"酷狗": getKugouMusic,
 	"网易": getNeteaseMusic,
 	"qq": getQQMusic,
-	"":   getNeteaseMusic, // 默认点歌指向网易
+	"":   getKuwoMusic, // 默认点歌指向网易
 }
 
 func init() {
