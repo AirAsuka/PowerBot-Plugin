@@ -32,7 +32,7 @@ const FishLimit = 100
 const StorePoleLimit = 25
 
 // version 规则版本号
-const version = "5.6.2"d
+const version = "5.6.2"
 
 // 各物品信息
 type jsonInfo struct {
