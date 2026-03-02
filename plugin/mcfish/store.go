@@ -291,7 +291,7 @@ func init() {
 					Other:    thing.Other,
 				}
 				polelist, _ := dbdata.getStoreThingInfo(thing.Name)
-				if len(polelist) > 5 { // 超出上限的不要
+				if len(polelist) > StorePoleLimit { // 超出上限的不要
 					newCommodity.Type = "waste"
 				}
 			}
