@@ -95,7 +95,7 @@ import (
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/event"             // 好友申请群聊邀请事件处理 ×
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/fortune"           // 运势
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/funny"             // 笑话
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/genshin"           // 原神抽卡
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/genshin"           // 原神抽卡
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/gif"               // 制图
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/guessmusic"        // 猜歌
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/handou"            // 猜成语 √
@@ -142,15 +142,12 @@ import (
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/tracemoe"          // 搜番
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/translation"       // 翻译
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wallet"            // 钱包
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wantquotes"        // 据意查句
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/warframeapi"       // warframeAPI插件
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wife"              // 抽老婆
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wordcount"         // 聊天热词
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wordle"            // 猜单词
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/ymgal"             // 月幕galgame
-	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/yujn"              // 遇见API
 
-	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/wtf"           // 鬼东西
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wtf"           // 鬼东西
 
 	//                               ^^^^                               //
 	//                          ^^^^^^^^^^^^^^                          //
