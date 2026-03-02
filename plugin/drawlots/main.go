@@ -60,13 +60,28 @@ func init() {
 			return
 		}
 		messageText := &strings.Builder{}
-		messageText.WriteString(" 签 名 [ 类 型 ]----签数\n")
-		messageText.WriteString("———————————\n")
+		messageText.WriteString("    ◆ 抽签列表 ◆\n")
+		messageText.WriteString("─────────────────\n\n")
+		folderCount := 0
+		gifCount := 0
 		for name, fileInfo := range lotsList {
-			messageText.WriteString(name + "[" + fileInfo.lotsType + "]----" + strconv.Itoa(fileInfo.quantity) + "\n")
-			messageText.WriteString("----------\n")
+			typeName := "GIF"
+			marker := "◇"
+			if fileInfo.lotsType == "folder" {
+				typeName = "图包"
+				marker = "◈"
+				folderCount++
+			} else {
+				gifCount++
+			}
+			messageText.WriteString("  " + marker + " " + name + "\n")
+			messageText.WriteString("     " + typeName + " · " + strconv.Itoa(fileInfo.quantity) + " 签\n\n")
 		}
-		textPic, err := text.RenderToBase64(messageText.String(), text.BoldFontFile, 400, 50)
+		messageText.WriteString("─────────────────\n")
+		messageText.WriteString("  图包 " + strconv.Itoa(folderCount) + " 种")
+		messageText.WriteString(" | GIF " + strconv.Itoa(gifCount) + " 种")
+		messageText.WriteString(" | 共 " + strconv.Itoa(len(lotsList)) + " 种")
+		textPic, err := text.RenderToBase64(messageText.String(), text.BoldFontFile, 400, 30)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
@@ -155,6 +170,11 @@ func init() {
 		// 尝试解析为GIF
 		im, gifErr := gif.DecodeAll(bytes.NewReader(gifdata))
 		if gifErr == nil {
+			// 检查是否存在同名图包签，防止覆盖
+			if existing, ok := lotsList[lotsName]; ok && existing.lotsType == "folder" {
+				ctx.Send(message.ReplyWithMessage(id, message.Text("已存在同名图包签\"", lotsName, "\"（", strconv.Itoa(existing.quantity), "签），请换个名字或先手动移除图包哦~")))
+				return
+			}
 			// GIF格式，保存为gif文件
 			fileName := datapath + "/" + lotsName + ".gif"
 			err = file.DownloadTo(picURL, fileName)
@@ -173,6 +193,11 @@ func init() {
 		_, format, err := image.DecodeConfig(bytes.NewReader(gifdata))
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: 不支持的图片格式"))
+			return
+		}
+		// 检查是否存在同名GIF签，防止覆盖
+		if existing, ok := lotsList[lotsName]; ok && existing.lotsType != "folder" {
+			ctx.Send(message.ReplyWithMessage(id, message.Text("已存在同名GIF签\"", lotsName, "\"，请换个名字或先删除GIF签哦~")))
 			return
 		}
 		// 保存到文件夹中作为图包签
@@ -214,6 +239,19 @@ func init() {
 			return
 		}
 		delete(lotsList, lotsName)
+		// 检查是否存在同名图包文件夹，若有则恢复到列表中
+		dirPath := datapath + "/" + lotsName
+		if dirInfo, statErr := os.Stat(dirPath); statErr == nil && dirInfo.IsDir() {
+			files, _ := os.ReadDir(dirPath)
+			if len(files) > 0 {
+				lotsList[lotsName] = info{
+					lotsType: "folder",
+					quantity: len(files),
+				}
+				ctx.Send(message.ReplyWithMessage(id, message.Text("GIF签已删除，已恢复同名图包签（", strconv.Itoa(len(files)), "签）")))
+				return
+			}
+		}
 		ctx.Send(message.ReplyWithMessage(id, message.Text("成功！")))
 	})
 }
