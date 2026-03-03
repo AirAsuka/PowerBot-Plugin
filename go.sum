@@ -1,7 +1,5 @@
 github.com/Baidu-AIP/golang-sdk v1.1.1 h1:RQsAmgDSAkiq22I6n7XJ2t3afgzFeqjY46FGhvrx4cw=
 github.com/Baidu-AIP/golang-sdk v1.1.1/go.mod h1:bXnGw7xPeKt8aF7UCELKrV6UZ/46spItONK1RQBQj1Y=
-github.com/Baidu-AIP/golang-sdk v1.1.1 h1:RQsAmgDSAkiq22I6n7XJ2t3afgzFeqjY46FGhvrx4cw=
-github.com/Baidu-AIP/golang-sdk v1.1.1/go.mod h1:bXnGw7xPeKt8aF7UCELKrV6UZ/46spItONK1RQBQj1Y=
 github.com/FloatTech/AnimeAPI v1.7.1-0.20251028071248-0c948e3db65c h1:fmvlRUzwoK6KdoRSW+XeTQ9myKHimd0pV6GbmRJLNRo=
 github.com/FloatTech/AnimeAPI v1.7.1-0.20251028071248-0c948e3db65c/go.mod h1:cuDd67B23xmICSmFBhWzXN51blod2BlM1liN9Ux0pSc=
 github.com/FloatTech/floatbox v0.0.0-20251002074805-f95cbc7edb31 h1:2K+/M64ixD1Pg5hr00Nbxr7GoWQOgahvpmp1pAMnrYc=

@@ -444,6 +444,9 @@ func formatGameDetailSummary(gameID string, detail gjson.Result) string {
 		isWinner := p.Get("GameplayStats.IsWinner").Bool()
 		isDead := p.Get("GameplayStats.IsDead").Bool()
 		killCount := p.Get("GameplayStats.KillCount").Int()
+		if killCount > 100 { # 律师击杀有144
+			killCount = 0
+		}
 		completed := p.Get("GameplayStats.Tasks.Completed").Int()
 		total := p.Get("GameplayStats.Tasks.Total").Int()
 		deathReason := p.Get("GameplayStats.DeathReason").String()
@@ -730,6 +733,9 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 		isWinner := p.Get("GameplayStats.IsWinner").Bool()
 		isDead := p.Get("GameplayStats.IsDead").Bool()
 		killCount := p.Get("GameplayStats.KillCount").Int()
+		if killCount > 100 { # 律师击杀有144
+			killCount = 0
+		}
 		completed := p.Get("GameplayStats.Tasks.Completed").Int()
 		total := p.Get("GameplayStats.Tasks.Total").Int()
 		deathReason := p.Get("GameplayStats.DeathReason").String()
