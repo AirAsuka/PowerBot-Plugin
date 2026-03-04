@@ -1,14 +1,13 @@
 package emojimix
 
 import (
-    "encoding/json"
-    "fmt"
-    "os"
-    "path/filepath"
-    "sort"
-    "strconv"
-    "strings" 
-    "sync"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
 
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
@@ -18,30 +17,40 @@ import (
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
-// Metadata 结构体定义
-type EmojiData struct {
-	Data map[string]EmojiInfo `json:"data"`
+// ---- metadata.json 结构体 (对应 emoji-kitchen-main/src/Components/types.tsx) ----
+
+type emojiMetadata struct {
+	KnownSupportedEmoji []string             `json:"knownSupportedEmoji"`
+	Data                map[string]*emojiData `json:"data"`
 }
 
-type EmojiInfo struct {
-	Combinations map[string][]Combination `json:"combinations"`
+type emojiData struct {
+	Alt            string                        `json:"alt"`
+	EmojiCodepoint string                        `json:"emojiCodepoint"`
+	GBoardOrder    int                           `json:"gBoardOrder"`
+	Combinations   map[string][]emojiCombination `json:"combinations"`
 }
 
-type Combination struct {
-	GStaticUrl string `json:"gStaticUrl"`
-	LeftEmoji  string `json:"leftEmojiCodepoint"`
-	RightEmoji string `json:"rightEmojiCodepoint"`
+type emojiCombination struct {
+	GStaticUrl          string `json:"gStaticUrl"`
+	Alt                 string `json:"alt"`
+	LeftEmojiCodepoint  string `json:"leftEmojiCodepoint"`
+	RightEmojiCodepoint string `json:"rightEmojiCodepoint"`
+	Date                string `json:"date"`
+	IsLatest            bool   `json:"isLatest"`
+	GBoardOrder         int    `json:"gBoardOrder"`
 }
 
 var (
-	// 内存索引：key 为 "unicode1_unicode2" (从小到大排序)，value 为 URL
-	mixCache map[string]string
+	// 合成索引: key = "normalizedCP1_normalizedCP2" (字典序) -> gStaticUrl
+	mixIndex map[string]string
+	// rune 序列 -> codepoint 字符串，用于从用户输入识别 emoji
+	runeToCP map[string]string
 	once     sync.Once
 )
 
 func init() {
-	// 加载数据
-	loadMetadata()
+	loadData()
 
 	control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
@@ -49,126 +58,228 @@ func init() {
 		Help:             "- [emoji][emoji]",
 	}).OnMessage(match).SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			r := ctx.State["emojimix"].([]rune)
-			url := getEmojiURLFromMetadata(r[0], r[1])
-
+			cps := ctx.State["emojimix"].([]string)
+			url := lookupCombination(cps[0], cps[1])
 			if url != "" {
 				ctx.SendChain(message.Image(url))
 				return
 			}
-			logrus.Debugf("[emojimix] metadata 中未找到合成: %x + %x", r[0], r[1])
+			logrus.Debugf("[emojimix] 未找到合成: %s + %s", cps[0], cps[1])
 		})
 }
 
-// 核心查询逻辑：不再需要 http 请求，直接查 map
-func getEmojiURLFromMetadata(r1, r2 rune) string {
-	// r1, r2 本身就是 rune，%x 得到的是 1f42e 和 2601 (不带后缀)
-	s1 := fmt.Sprintf("%x", r1)
-	s2 := fmt.Sprintf("%x", r2)
+// ---- 数据加载 ----
 
-	keys := []string{s1, s2}
-	sort.Strings(keys)
-	cacheKey := keys[0] + "_" + keys[1]
-
-	return mixCache[cacheKey]
-}
-
-// 加载本地 metadata.json 并转换为快速索引 map
-// 辅助函数：去掉 Unicode 字符串中的变体后缀
-func normalize(s string) string {
-	s = strings.ReplaceAll(s, "-fe0f", "")
-	s = strings.ReplaceAll(s, "-ufe0f", "") // 兼容可能存在的不同前缀
-	return s
-}
-func loadMetadata() {
+func loadData() {
 	once.Do(func() {
-		mixCache = make(map[string]string)
-		path := filepath.Join("data", "emojimix", "metadata.json")
+		mixIndex = make(map[string]string)
+		runeToCP = make(map[string]string)
 
-		file, err := os.ReadFile(path)
+		path := filepath.Join("data", "emojimix", "metadata.json")
+		raw, err := os.ReadFile(path)
 		if err != nil {
 			logrus.Errorf("[emojimix] 读取 metadata 失败: %v", err)
 			return
 		}
 
-		var rawData EmojiData
-		if err := json.Unmarshal(file, &rawData); err != nil {
+		var meta emojiMetadata
+		if err := json.Unmarshal(raw, &meta); err != nil {
 			logrus.Errorf("[emojimix] 解析 metadata 失败: %v", err)
 			return
 		}
 
-		// 遍历外层 Data (例如 "1f42e")
-		for rootHex, info := range rawData.Data {
-			rootClean := normalize(rootHex)
-			
-			// 遍历内层 Combinations (例如 "2601-fe0f")
-			for comboHex, combos := range info.Combinations {
-				comboClean := normalize(comboHex)
-				
-				// 只要有 URL，我们就根据这两个 Key 生成索引
-				if len(combos) > 0 {
-					// 排序以确保 A_B 和 B_A 都能搜到
-					k := []string{rootClean, comboClean}
-					sort.Strings(k)
-					key := k[0] + "_" + k[1]
-					
-					if _, ok := mixCache[key]; !ok {
-						mixCache[key] = combos[0].GStaticUrl
+		// 1) 构建 rune 序列 -> codepoint 映射 (用于识别用户输入中的 emoji)
+		for _, cp := range meta.KnownSupportedEmoji {
+			runes := cpToRunes(cp)
+			runeToCP[string(runes)] = cp
+			// 同时存储去掉 FE0F/FE0E 的版本，方便匹配用户输入
+			stripped := stripVS(runes)
+			if len(stripped) != len(runes) {
+				runeToCP[string(stripped)] = cp
+			}
+		}
+
+		// 2) 构建合成索引
+		// 逻辑对应 kitchen.tsx:
+		//   getEmojiData(left).combinations[right].filter(c => c.isLatest)[0].gStaticUrl
+		for cp1, data := range meta.Data {
+			n1 := normalizeCP(cp1)
+			for cp2, combos := range data.Combinations {
+				n2 := normalizeCP(cp2)
+				for _, c := range combos {
+					if c.IsLatest && c.GStaticUrl != "" {
+						key := sortedPair(n1, n2)
+						if _, ok := mixIndex[key]; !ok {
+							mixIndex[key] = c.GStaticUrl
+						}
+						break
 					}
 				}
 			}
 		}
-		logrus.Infof("[emojimix] 成功加载 %d 条全向索引", len(mixCache))
+
+		logrus.Infof("[emojimix] 加载完成: %d 个 emoji, %d 条合成索引",
+			len(meta.KnownSupportedEmoji), len(mixIndex))
 	})
 }
-// 匹配逻辑保持不变，但移除了对硬编码 map 的依赖
+
+// ---- 查询 ----
+
+// lookupCombination 根据两个 emoji 的 codepoint 字符串查找合成图片 URL
+func lookupCombination(cp1, cp2 string) string {
+	return mixIndex[sortedPair(normalizeCP(cp1), normalizeCP(cp2))]
+}
+
+// ---- 消息匹配 ----
+
 func match(ctx *zero.Ctx) bool {
-	// 获取原始 rune 数组
-	var rawRunes []rune
-	if len(ctx.Event.Message) == 2 {
-		r1 := face2emoji(ctx.Event.Message[0])
-		r2 := face2emoji(ctx.Event.Message[1])
-		rawRunes = []rune{r1, r2}
+	// 从所有 segment 中提取 emoji codepoint
+	cps := make([]string, 0, 2)
+	for _, seg := range ctx.Event.Message {
+		if cp := segmentToCP(seg); cp != "" {
+			cps = append(cps, cp)
+		}
+	}
+
+	var cp1, cp2 string
+	if len(cps) == 2 {
+		cp1, cp2 = cps[0], cps[1]
 	} else {
-		rawRunes = []rune(ctx.Event.RawMessage)
+		// 兜底: 从 RawMessage 中分割两个 emoji
+		cp1, cp2 = splitTwoEmoji([]rune(ctx.Event.RawMessage))
 	}
 
-	// 【关键修正】：过滤掉所有的 FE0F (Variation Selector-16)
-	filtered := make([]rune, 0, len(rawRunes))
-	for _, val := range rawRunes {
-		if val != 0 && val != 0xFE0F && val != 0xFE0E {
-			filtered = append(filtered, val)
-		}
-	}
-
-	// 过滤后必须刚好是 2 个 emoji
-	if len(filtered) == 2 {
-		if isEmoji(filtered[0]) && isEmoji(filtered[1]) {
-			ctx.State["emojimix"] = filtered
-			return true
-		}
+	if cp1 != "" && cp2 != "" {
+		ctx.State["emojimix"] = []string{cp1, cp2}
+		return true
 	}
 	return false
 }
 
+// segmentToCP 从消息 segment 中提取 emoji codepoint 字符串
+func segmentToCP(seg message.Segment) string {
+	switch seg.Type {
+	case "text":
+		runes := []rune(seg.Data["text"])
+		// 去掉空白和零值
+		filtered := make([]rune, 0, len(runes))
+		for _, r := range runes {
+			if r > 0 && r != ' ' && r != '\t' && r != '\n' && r != '\r' {
+				filtered = append(filtered, r)
+			}
+		}
+		if len(filtered) == 0 {
+			return ""
+		}
+		// 先尝试完整 rune 序列匹配已知 emoji
+		if cp, ok := runeToCP[string(filtered)]; ok {
+			return cp
+		}
+		// 再尝试去掉 Variation Selector 后匹配
+		if cp, ok := runeToCP[string(stripVS(filtered))]; ok {
+			return cp
+		}
+		// 兜底: 如果只有单个 rune 且看起来像 emoji，直接用 hex
+		if len(filtered) == 1 && isEmoji(filtered[0]) {
+			return fmt.Sprintf("%x", filtered[0])
+		}
+	case "face":
+		id, _ := strconv.Atoi(seg.Data["id"])
+		if r, ok := message.Emoji[id]; ok {
+			return fmt.Sprintf("%x", r)
+		}
+	}
+	return ""
+}
+
+// splitTwoEmoji 尝试将 rune 序列分割成恰好两个已知 emoji
+func splitTwoEmoji(rawRunes []rune) (string, string) {
+	// 过滤零值和空白
+	runes := make([]rune, 0, len(rawRunes))
+	for _, r := range rawRunes {
+		if r > 0 && r != ' ' && r != '\t' && r != '\n' && r != '\r' {
+			runes = append(runes, r)
+		}
+	}
+	if len(runes) < 2 {
+		return "", ""
+	}
+
+	// 尝试原始序列分割
+	if cp1, cp2 := trySplit(runes); cp1 != "" {
+		return cp1, cp2
+	}
+
+	// 尝试去掉 Variation Selector 后分割
+	stripped := stripVS(runes)
+	if len(stripped) != len(runes) && len(stripped) >= 2 {
+		return trySplit(stripped)
+	}
+
+	return "", ""
+}
+
+// trySplit 遍历所有可能的分割点，查找两个已知 emoji
+func trySplit(runes []rune) (string, string) {
+	n := len(runes)
+	for i := 1; i < n; i++ {
+		leftCP, leftOK := runeToCP[string(runes[:i])]
+		rightCP, rightOK := runeToCP[string(runes[i:])]
+		if leftOK && rightOK {
+			return leftCP, rightCP
+		}
+	}
+	return "", ""
+}
+
+// ---- 工具函数 ----
+
+// cpToRunes 将 codepoint 字符串 (如 "1f636-200d-1f32b-fe0f") 转为 rune 切片
+func cpToRunes(cp string) []rune {
+	parts := strings.Split(cp, "-")
+	runes := make([]rune, 0, len(parts))
+	for _, p := range parts {
+		v, err := strconv.ParseInt(p, 16, 32)
+		if err == nil {
+			runes = append(runes, rune(v))
+		}
+	}
+	return runes
+}
+
+// stripVS 去掉 rune 切片中的 Variation Selector (U+FE0F / U+FE0E)
+func stripVS(runes []rune) []rune {
+	out := make([]rune, 0, len(runes))
+	for _, r := range runes {
+		if r != 0xFE0F && r != 0xFE0E {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// normalizeCP 去掉 codepoint 字符串中的 fe0f / fe0e 变体选择符
+func normalizeCP(cp string) string {
+	parts := strings.Split(cp, "-")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p != "fe0f" && p != "fe0e" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, "-")
+}
+
+// sortedPair 生成字典序排列的配对 key: "smaller_larger"
+func sortedPair(a, b string) string {
+	if a > b {
+		a, b = b, a
+	}
+	return a + "_" + b
+}
+
+// isEmoji 简单判断 rune 是否可能是 emoji
 func isEmoji(r rune) bool {
-	// 简单的范围判断，可以根据需要扩充
 	return r > 0x2000
 }
 
-func face2emoji(face message.Segment) rune {
-    if face.Type == "text" {
-        r := []rune(face.Data["text"])
-        // 同样过滤 text 里的后缀
-        if len(r) > 0 && r[0] != 0 {
-            return r[0] 
-        }
-        return 0
-    }
-    if face.Type != "face" { return 0 }
-    id, _ := strconv.Atoi(face.Data["id"])
-    if r, ok := message.Emoji[id]; ok {
-        return r // 这里拿到的通常是基础码位
-    }
-    return 0
-}
