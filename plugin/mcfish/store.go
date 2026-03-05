@@ -854,6 +854,13 @@ func (sql *fishdb) loadDisabledGroups() error {
 	if err != nil {
 		return err
 	}
+	count, err := sql.db.Count("groupBan")
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return nil
+	}
 	return sql.db.FindFor("groupBan", &ban, "", func() error {
 		disabledGroups.Store(ban.GroupID, struct{}{})
 		return nil
