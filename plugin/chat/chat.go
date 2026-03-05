@@ -51,6 +51,8 @@ func init() { // 插件主体
 				time.Sleep(time.Second * 1)
 				ctx.SendChain(message.Text(randVoice(pokerName)))
 			default:
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text(randVoice(pokerName)))
 				// 频繁触发，不回复
 			}
 		})
