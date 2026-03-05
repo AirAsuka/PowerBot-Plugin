@@ -23,7 +23,7 @@ import (
 )
 
 func init() {
-	engine.OnFullMatch("钓鱼背包", getdb).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+	engine.OnFullMatch("钓鱼背包", getdb, groupNotDisabled).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 		equipInfo, err := dbdata.getUserEquip(uid)
 		if err != nil {
@@ -42,7 +42,7 @@ func init() {
 		}
 		ctx.SendChain(message.ImageBytes(pic))
 	})
-	engine.OnRegex(`^消除(绑定|宝藏)诅咒(\d*)$`, getdb).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^消除(绑定|宝藏)诅咒(\d*)$`, getdb, groupNotDisabled).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 		number, _ := strconv.Atoi(ctx.State["regex_matched"].([]string)[2])
 		if number == 0 {
@@ -93,7 +93,7 @@ func init() {
 		}
 		ctx.SendChain(message.Text("消除成功"))
 	})
-	engine.OnFullMatch("当前装备概率明细", getdb).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+	engine.OnFullMatch("当前装备概率明细", getdb, groupNotDisabled).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 		equipInfo, err := dbdata.getUserEquip(uid)
 		if err != nil {
@@ -171,7 +171,7 @@ func init() {
 		msg = append(msg, message.Text("-----------"))
 		ctx.Send(msg)
 	})
-	engine.OnFullMatch("查看钓鱼规则", getdb).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+	engine.OnFullMatch("查看钓鱼规则", getdb, groupNotDisabled).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		msg := "一款钓鱼模拟器\n----------指令----------\n" +
 			"- 钓鱼看板/钓鱼商店\n- 购买xxx\n- 购买xxx [数量]\n- 出售xxx\n- 出售xxx [数量]\n- 出售所有垃圾\n" +
 			"- 钓鱼背包\n- 装备[xx竿|三叉戟|美西螈]\n- 附魔[诱钓|海之眷顾]\n- 修复鱼竿\n- 合成[xx竿|三叉戟]\n- 消除[绑定|宝藏]诅咒\n- 消除[绑定|宝藏]诅咒 [数量]\n" +

@@ -15,7 +15,7 @@ import (
 )
 
 func init() {
-	engine.OnRegex(`^进行(([1-5]\d|[1-9])次)?钓鱼$`, getdb).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^进行(([1-5]\d|[1-9])次)?钓鱼$`, getdb, groupNotDisabled).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 		numberOfPole, err := dbdata.getNumberFor(uid, "竿")
 		if err != nil {

@@ -71,7 +71,7 @@ func limitSet(ctx *zero.Ctx) *rate.Limiter {
 }
 
 func init() {
-	engine.OnFullMatchGroup([]string{"钓鱼看板", "钓鱼商店"}, getdb, refreshFish).SetBlock(true).Limit(limitSet).Handle(func(ctx *zero.Ctx) {
+	engine.OnFullMatchGroup([]string{"钓鱼看板", "钓鱼商店"}, getdb, refreshFish, groupNotDisabled).SetBlock(true).Limit(limitSet).Handle(func(ctx *zero.Ctx) {
 		infos, err := dbdata.getStoreInfo()
 		if err != nil {
 			ctx.SendChain(message.Text("[ERROR at store.go.2]:", err))
@@ -94,7 +94,7 @@ func init() {
 		}
 		ctx.SendChain(message.ImageBytes(pic))
 	})
-	engine.OnRegex(`^出售(`+strings.Join(thingList, "|")+`)\s*(\d*)$`, getdb, refreshFish).SetBlock(true).Limit(limitSet).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^出售(`+strings.Join(thingList, "|")+`)\s*(\d*)$`, getdb, refreshFish, groupNotDisabled).SetBlock(true).Limit(limitSet).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 		thingName := ctx.State["regex_matched"].([]string)[1]
 		number, _ := strconv.Atoi(ctx.State["regex_matched"].([]string)[2])
@@ -344,7 +344,7 @@ func init() {
 
 		ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("成功出售", thingName, "：", number, "个", ",你赚到了", pice*number, msg)))
 	})
-	engine.OnRegex(`^出售所有垃圾`, getdb, refreshFish).SetBlock(true).Limit(limitSet).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^出售所有垃圾`, getdb, refreshFish, groupNotDisabled).SetBlock(true).Limit(limitSet).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 
 		articles, err := dbdata.getUserTypeInfo(uid, "waste")
@@ -420,7 +420,7 @@ func init() {
 		}
 		ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("出售成功,你赚到了", pice, msg)))
 	})
-	engine.OnRegex(`^购买(`+strings.Join(thingList, "|")+`|初始木竿)\s*(\d*)$`, getdb, refreshFish).SetBlock(true).Limit(limitSet).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^购买(`+strings.Join(thingList, "|")+`|初始木竿)\s*(\d*)$`, getdb, refreshFish, groupNotDisabled).SetBlock(true).Limit(limitSet).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 		thingName := ctx.State["regex_matched"].([]string)[1]
 		number, _ := strconv.Atoi(ctx.State["regex_matched"].([]string)[2])
@@ -839,4 +839,37 @@ func drawStroeInfoImage(stroeInfo []store) (picImage image.Image, err error) {
 		canvas.DrawStringAnchored(strconv.Itoa(pice), 10+nameW+10+numberW+50+priceW/2, textDy+textH/2, 0.5, 0.5)
 	}
 	return canvas.Image(), nil
+}
+
+/*********************************************************/
+/************************群禁用相关函数*********************/
+/*********************************************************/
+
+// 加载所有禁用的群
+func (sql *fishdb) loadDisabledGroups() error {
+	sql.Lock()
+	defer sql.Unlock()
+	ban := groupBan{}
+	err := sql.db.Create("groupBan", &ban)
+	if err != nil {
+		return err
+	}
+	return sql.db.FindFor("groupBan", &ban, "", func() error {
+		disabledGroups.Store(ban.GroupID, struct{}{})
+		return nil
+	})
+}
+
+// 禁用群钓鱼
+func (sql *fishdb) setGroupBan(gid int64) error {
+	sql.Lock()
+	defer sql.Unlock()
+	return sql.db.Insert("groupBan", &groupBan{GroupID: gid})
+}
+
+// 启用群钓鱼
+func (sql *fishdb) removeGroupBan(gid int64) error {
+	sql.Lock()
+	defer sql.Unlock()
+	return sql.db.Del("groupBan", "WHERE GroupID = ?", gid)
 }
