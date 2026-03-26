@@ -45,7 +45,7 @@ var (
 		Brief:            "多功能抽签",
 		Help: "支持图包文件夹和gif抽签\n" +
 			"-------------\n" +
-			"- (刷新)抽签列表\n- 抽[图包签名]签(仅图包)\n- 抽群友签(随机图包)\n- 看[gif签名]签(仅gif)\n- 加[签名]签[图片/gif]\n- 删[gif签名]签",
+			"- (刷新)抽签列表\n- 抽[签名]签(仅图包)\n- 抽群友签(随机图包)\n- 看[签名]签(仅gif)\n- 加[签名]签[图片](图包)\n- 加[签名]gif签[gif](GIF)\n- 删[签名]签(仅gif)",
 		PrivateDataFolder: "drawlots",
 	}).ApplySingle(ctxext.DefaultSingle)
 	datapath = file.BOTPATH + "/" + en.DataFolder()
@@ -155,6 +155,45 @@ func init() {
 		}
 		ctx.Send(message.ReplyWithMessage(id, message.Image("file:///"+datapath+lotsName+"."+fileInfo.lotsType)))
 	})
+	// 加GIF签 - 先注册，优先匹配 "加xxxgif签"
+	en.OnRegex(`^加(.+)gif签.*`, zero.MustProvidePicture).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+		id := ctx.Event.MessageID
+		lotsName := ctx.State["regex_matched"].([]string)[1]
+		if lotsName == "" {
+			ctx.Send(message.ReplyWithMessage(id, message.Text("请使用正确的指令形式哦~")))
+			return
+		}
+		// 检查是否存在同名图包签，防止覆盖
+		if existing, ok := lotsList[lotsName]; ok && existing.lotsType == "folder" {
+			ctx.Send(message.ReplyWithMessage(id, message.Text("已存在同名图包签\"", lotsName, "\"（", strconv.Itoa(existing.quantity), "签），请换个名字或先手动移除图包哦~")))
+			return
+		}
+		picURL := ctx.State["image_url"].([]string)[0]
+		gifdata, err := web.GetData(picURL)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		// 解析GIF获取帧数
+		im, err := gif.DecodeAll(bytes.NewReader(gifdata))
+		if err != nil {
+			ctx.Send(message.ReplyWithMessage(id, message.Text("这不是有效的GIF图片哦~请使用\"加", lotsName, "签\"添加普通图片")))
+			return
+		}
+		// 直接写入已下载的数据，避免二次下载
+		fileName := datapath + "/" + lotsName + ".gif"
+		err = os.WriteFile(fileName, gifdata, 0644)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+			return
+		}
+		lotsList[lotsName] = info{
+			lotsType: "gif",
+			quantity: len(im.Image),
+		}
+		ctx.Send(message.ReplyWithMessage(id, message.Text("成功添加GIF签！共", strconv.Itoa(len(im.Image)), "签")))
+	})
+	// 加图片签 - 后注册，匹配 "加xxx签"
 	en.OnRegex(`^加(.+)签.*`, zero.MustProvidePicture).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		id := ctx.Event.MessageID
 		lotsName := ctx.State["regex_matched"].([]string)[1]
@@ -162,42 +201,25 @@ func init() {
 			ctx.Send(message.ReplyWithMessage(id, message.Text("请使用正确的指令形式哦~")))
 			return
 		}
+		// 检查是否存在同名GIF签，防止覆盖
+		if existing, ok := lotsList[lotsName]; ok && existing.lotsType != "folder" {
+			ctx.Send(message.ReplyWithMessage(id, message.Text("已存在同名GIF签\"", lotsName, "\"，请换个名字或先删除GIF签哦~")))
+			return
+		}
 		picURL := ctx.State["image_url"].([]string)[0]
-		gifdata, err := web.GetData(picURL)
+		picData, err := web.GetData(picURL)
 		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		// 尝试解析为GIF
-		im, gifErr := gif.DecodeAll(bytes.NewReader(gifdata))
-		if gifErr == nil {
-			// 检查是否存在同名图包签，防止覆盖
-			if existing, ok := lotsList[lotsName]; ok && existing.lotsType == "folder" {
-				ctx.Send(message.ReplyWithMessage(id, message.Text("已存在同名图包签\"", lotsName, "\"（", strconv.Itoa(existing.quantity), "签），请换个名字或先手动移除图包哦~")))
-				return
-			}
-			// GIF格式，保存为gif文件
-			fileName := datapath + "/" + lotsName + ".gif"
-			err = file.DownloadTo(picURL, fileName)
-			if err != nil {
-				ctx.SendChain(message.Text("ERROR: ", err))
-				return
-			}
-			lotsList[lotsName] = info{
-				lotsType: "gif",
-				quantity: len(im.Image),
-			}
-			ctx.Send(message.ReplyWithMessage(id, message.Text("成功添加GIF签！共", strconv.Itoa(len(im.Image)), "签")))
-			return
-		}
-		// 非GIF格式，尝试识别为其他图片格式(png/jpeg等)
-		_, format, err := image.DecodeConfig(bytes.NewReader(gifdata))
+		// 仅读取图片头部识别格式，不做完整解码
+		_, format, err := image.DecodeConfig(bytes.NewReader(picData))
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: 不支持的图片格式"))
 			return
 		}
-		// 检查是否存在同名GIF签，防止覆盖
-		if existing, ok := lotsList[lotsName]; ok && existing.lotsType != "folder" {
-			ctx.Send(message.ReplyWithMessage(id, message.Text("已存在同名GIF签\"", lotsName, "\"，请换个名字或先删除GIF签哦~")))
+		if format == "gif" {
+			ctx.Send(message.ReplyWithMessage(id, message.Text("检测到GIF图片，请使用\"加", lotsName, "gif签\"添加哦~")))
 			return
 		}
 		// 保存到文件夹中作为图包签
@@ -208,18 +230,18 @@ func init() {
 			return
 		}
 		existFiles, _ := os.ReadDir(dirPath)
-		fileName := dirPath + "/" + strconv.Itoa(len(existFiles)+1) + "." + format
-		err = os.WriteFile(fileName, gifdata, 0644)
+		newCount := len(existFiles) + 1
+		fileName := dirPath + "/" + strconv.Itoa(newCount) + "." + format
+		err = os.WriteFile(fileName, picData, 0644)
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		existFiles, _ = os.ReadDir(dirPath)
 		lotsList[lotsName] = info{
 			lotsType: "folder",
-			quantity: len(existFiles),
+			quantity: newCount,
 		}
-		ctx.Send(message.ReplyWithMessage(id, message.Text("成功添加图片签！当前共", strconv.Itoa(len(existFiles)), "签")))
+		ctx.Send(message.ReplyWithMessage(id, message.Text("成功添加图片签！当前共", strconv.Itoa(newCount), "签")))
 	})
 	en.OnRegex(`^删(.+)签$`, zero.SuperUserPermission).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		id := ctx.Event.MessageID

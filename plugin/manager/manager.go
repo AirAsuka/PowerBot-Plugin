@@ -589,7 +589,8 @@ func init() { // 插件主体
 				ctx.SendChain(message.Text("出错啦: ", err))
 				return
 			}
-			ctx.SendChain(message.Text("找不到服务!"))
+			// ctx.SendChain(message.Text("找不到服务!"))
+			return
 		})
 	// 加群 gist 验证开关
 	engine.OnRegex(`^(.*)gist加群自动审批$`, zero.OnlyGroup, zero.AdminPermission).SetBlock(true).
@@ -614,7 +615,8 @@ func init() { // 插件主体
 				ctx.SendChain(message.Text("出错啦: ", err))
 				return
 			}
-			ctx.SendChain(message.Text("找不到服务!"))
+			// ctx.SendChain(message.Text("找不到服务!"))
+			return
 		})
 	// 根据 gist 自动同意加群
 	// 加群请在github新建一个gist，其文件名为本群群号的字符串的md5(小写)，内容为一行，是当前unix时间戳(10分钟内有效)。
