@@ -1,15 +1,18 @@
-// Package memes 表情包制作 - 连接本地部署的 meme-generator-rs
+// Package memes 表情包制作 - 通过 meme-generator-rs API 生成表情包
 package memes
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"math/rand"
-	"regexp"
+	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/web"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
@@ -19,389 +22,284 @@ import (
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
-var (
-	// memeInfoMap key -> MemeInfo 的映射
-	memeInfoMap = make(map[string]*MemeInfo)
-	// keywordMap keyword -> MemeInfo 的映射（用于通过关键词查找表情）
-	keywordMap = make(map[string]*MemeInfo)
-	// shortcutMap 快捷指令正则 -> (MemeInfo, MemeShortcut) 的映射
-	shortcutMap     = make(map[string]*shortcutEntry)
-	shortcutRegexps []*shortcutMatcher
-
-	mu sync.RWMutex
+const (
+	// baseURL meme-generator-rs API 地址
+	baseURL = "http://127.0.0.1:2233"
 )
 
-type shortcutEntry struct {
-	info     *MemeInfo
-	shortcut MemeShortcut
-}
-
-type shortcutMatcher struct {
-	re       *regexp.Regexp
-	info     *MemeInfo
-	shortcut MemeShortcut
-}
+var (
+	// keyMap 关键词 -> 表情key 的映射
+	keyMap = make(map[string]string)
+	// infos 表情key -> 表情信息 的映射
+	infos = make(map[string]*MemeInfo)
+	// dataDir 数据目录
+	dataDir string
+	// mu 保护 keyMap 和 infos 的读写锁
+	mu sync.RWMutex
+)
 
 func init() {
 	en := control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
 		Brief:            "表情包制作",
-		Help: "- 表情包制作 / 表情列表\n" +
-			"- 表情详情 [关键词]\n" +
-			"- 表情搜索 [关键词]\n" +
-			"- 表情预览 [关键词]\n" +
-			"- [关键词] [图片/@某人/文字]\n" +
-			"- 随机表情 [图片/@某人/文字]\n" +
-			"- 更新表情\n" +
-			"Tips: 触发方式为 关键词+图片/文字/@某人",
+		Help: "- 表情包列表 (查看所有可用表情)\n" +
+			"- 表情包搜索XXX (搜索表情关键词)\n" +
+			"- 表情包帮助 (查看使用帮助)\n" +
+			"- 表情包详情XXX (查看表情参数详情)\n" +
+			"- 表情包更新 (更新表情列表缓存)\n" +
+			"- 随机表情包 (随机生成一个表情)\n" +
+			"- {表情关键词}[@用户] (制作表情)\n" +
+			"Tips: 使用表情关键词时可@用户使用对方头像，不@则用自己头像",
+		PrivateDataFolder: "memes",
 	})
+	dataDir = file.BOTPATH + "/" + en.DataFolder()
+	_ = os.MkdirAll(dataDir, 0755)
 
 	// 初始化加载表情列表
-	loadMemes()
+	if err := loadMemeData(); err != nil {
+		logrus.Warnf("[memes] 初始化加载表情列表失败: %v, 将在首次使用时重新加载", err)
+	}
 
-	// 表情列表命令
-	en.OnFullMatchGroup([]string{"表情包制作", "表情列表", "表情包列表"}).
+	// 表情包列表
+	en.OnFullMatchGroup([]string{"表情包列表", "meme列表", "memes列表"}).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			ctx.SendChain(message.Text("正在生成表情列表..."))
-			imgData, err := renderMemeList()
+			ctx.SendChain(message.Text("正在生成表情包列表，请稍候..."))
+			data, err := renderMemeList()
 			if err != nil {
-				ctx.SendChain(message.Text("生成表情列表失败: ", err))
+				ctx.SendChain(message.Text("ERROR: ", err))
 				return
 			}
-			b64 := base64.StdEncoding.EncodeToString(imgData)
+			b64 := base64.StdEncoding.EncodeToString(data)
 			ctx.SendChain(message.Image("base64://" + b64))
 		})
 
-	// 表情详情命令
-	en.OnPrefix("表情详情").SetBlock(true).Limit(ctxext.LimitByUser).
+	// 表情包帮助
+	en.OnFullMatchGroup([]string{"表情包帮助", "meme帮助", "memes帮助"}).
+		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			name := strings.TrimSpace(ctx.State["args"].(string))
-			if name == "" {
-				ctx.SendChain(message.Text("请输入表情关键词"))
-				return
-			}
-			info := findMemeInfo(name)
-			if info == nil {
-				// 尝试搜索
-				keys, err := searchMemes(name, true)
-				if err == nil && len(keys) > 0 {
-					result := "未找到表情「" + name + "」，你可能在找：\n"
-					for i, k := range keys {
-						if i >= 5 {
-							break
-						}
-						if mi, ok := memeInfoMap[k]; ok {
-							result += fmt.Sprintf("  %d. %s (%s)\n", i+1, k, strings.Join(mi.Keywords, "/"))
-						} else {
-							result += fmt.Sprintf("  %d. %s\n", i+1, k)
-						}
-					}
-					ctx.SendChain(message.Text(result))
-				} else {
-					ctx.SendChain(message.Text("未找到表情「", name, "」"))
-				}
-				return
-			}
-			params := info.Params
-			keywords := strings.Join(info.Keywords, "、")
-
-			imageNum := strconv.Itoa(params.MinImages)
-			if params.MaxImages > params.MinImages {
-				imageNum += " ~ " + strconv.Itoa(params.MaxImages)
-			}
-			textNum := strconv.Itoa(params.MinTexts)
-			if params.MaxTexts > params.MinTexts {
-				textNum += " ~ " + strconv.Itoa(params.MaxTexts)
-			}
-
-			text := fmt.Sprintf("表情名：%s\n关键词：%s\n需要图片数目：%s\n需要文字数目：%s",
-				info.Key, keywords, imageNum, textNum)
-
-			if len(info.Tags) > 0 {
-				text += "\n标签：" + strings.Join(info.Tags, "、")
-			}
-			if len(params.DefaultTexts) > 0 {
-				text += "\n默认文字：[" + strings.Join(params.DefaultTexts, ", ") + "]"
-			}
-
-			msgs := []message.Segment{message.Text(text)}
-
-			// 尝试生成预览
-			preview, err := generateMemePreview(info.Key)
-			if err == nil && len(preview) > 0 {
-				b64 := base64.StdEncoding.EncodeToString(preview)
-				msgs = append(msgs, message.Text("\n表情预览：\n"), message.Image("base64://"+b64))
-			}
-			ctx.SendChain(msgs...)
+			ctx.SendChain(message.Text(
+				"【表情包列表】查看所有可用表情\n",
+				"【{表情名称}】使用表情名称制作表情\n",
+				"【{表情名称}@用户】使用被@用户的头像和昵称\n",
+				"【{表情名称} 文字】附带文字制作表情\n",
+				"【随机表情包】随机制作一个表情\n",
+				"【表情包搜索+关键词】搜索表情包\n",
+				"【表情包详情+名称】查看表情支持的参数\n",
+				"【表情包更新】更新本地表情列表缓存\n",
+				"Tips: 多段文字用/分隔",
+			))
 		})
 
-	// 表情预览命令
-	en.OnPrefix("表情预览").SetBlock(true).Limit(ctxext.LimitByUser).
+	// 表情包更新
+	en.OnFullMatchGroup([]string{"表情包更新", "meme更新", "memes更新"}).
+		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			name := strings.TrimSpace(ctx.State["args"].(string))
-			if name == "" {
-				ctx.SendChain(message.Text("请输入表情关键词"))
-				return
-			}
-			info := findMemeInfo(name)
-			if info == nil {
-				ctx.SendChain(message.Text("未找到表情「", name, "」"))
-				return
-			}
-			preview, err := generateMemePreview(info.Key)
+			ctx.SendChain(message.Text("正在更新表情包列表..."))
+			// 清除缓存文件
+			_ = os.Remove(dataDir + "/infos.json")
+			_ = os.Remove(dataDir + "/keymap.json")
+			err := loadMemeData()
 			if err != nil {
-				ctx.SendChain(message.Text("生成预览失败: ", err))
+				ctx.SendChain(message.Text("ERROR: 更新失败: ", err))
 				return
 			}
-			b64 := base64.StdEncoding.EncodeToString(preview)
-			ctx.SendChain(message.Image("base64://" + b64))
+			mu.RLock()
+			count := len(infos)
+			mu.RUnlock()
+			ctx.SendChain(message.Text(fmt.Sprintf("更新完成！共加载 %d 个表情", count)))
 		})
 
-	// 表情搜索命令
-	en.OnPrefix("表情搜索").SetBlock(true).Limit(ctxext.LimitByUser).
+	// 表情包搜索
+	en.OnRegex(`^(表情包|memes?)搜索\s*(.+)$`).
+		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			name := strings.TrimSpace(ctx.State["args"].(string))
-			if name == "" {
+			keyword := ctx.State["regex_matched"].([]string)[2]
+			keyword = strings.TrimSpace(keyword)
+			if keyword == "" {
 				ctx.SendChain(message.Text("请输入搜索关键词"))
 				return
 			}
-			keys, err := searchMemes(name, true)
-			if err != nil {
-				ctx.SendChain(message.Text("搜索出错: ", err))
+			mu.RLock()
+			hits := make([]string, 0)
+			for k := range keyMap {
+				if strings.Contains(k, keyword) {
+					hits = append(hits, k)
+				}
+			}
+			mu.RUnlock()
+			sort.Strings(hits)
+			if len(hits) == 0 {
+				ctx.SendChain(message.Text("未找到包含\"", keyword, "\"的表情"))
 				return
 			}
-			if len(keys) == 0 {
-				ctx.SendChain(message.Text("没有找到相关表情"))
-				return
-			}
-			result := "搜索结果：\n"
-			for i, k := range keys {
-				if i >= 20 {
-					result += fmt.Sprintf("... 共 %d 条结果\n", len(keys))
+			result := "搜索结果："
+			for i, h := range hits {
+				if i >= 30 {
+					result += fmt.Sprintf("\n... 等共%d个结果", len(hits))
 					break
 				}
-				mu.RLock()
-				mi, ok := memeInfoMap[k]
-				mu.RUnlock()
-				if ok {
-					result += fmt.Sprintf("  %d. %s (%s)\n", i+1, k, strings.Join(mi.Keywords, "/"))
-				} else {
-					result += fmt.Sprintf("  %d. %s\n", i+1, k)
-				}
+				result += fmt.Sprintf("\n%d. %s", i+1, h)
 			}
 			ctx.SendChain(message.Text(result))
 		})
 
-	// 更新表情命令
-	en.OnFullMatchGroup([]string{"更新表情", "刷新表情"}).
+	// 表情包详情
+	en.OnRegex(`^(表情包|memes?)详情\s*(.+)$`).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			ctx.SendChain(message.Text("正在更新表情列表..."))
-			loadMemes()
-			ver, err := getVersion()
-			if err != nil {
-				ver = "未知"
-			}
+			name := strings.TrimSpace(ctx.State["regex_matched"].([]string)[2])
 			mu.RLock()
-			count := len(memeInfoMap)
-			mu.RUnlock()
-			ctx.SendChain(message.Text(fmt.Sprintf("表情更新成功！\n版本：%s\n共 %d 个表情", ver, count)))
-		})
-
-	// 随机表情命令
-	en.OnPrefix("随机表情").SetBlock(true).Limit(ctxext.LimitByUser).
-		Handle(func(ctx *zero.Ctx) {
-			images, texts := extractParams(ctx)
-			mu.RLock()
-			var available []*MemeInfo
-			for _, info := range memeInfoMap {
-				if info.Params.MinImages <= len(images) && len(images) <= info.Params.MaxImages &&
-					info.Params.MinTexts <= len(texts) && len(texts) <= info.Params.MaxTexts {
-					available = append(available, info)
-				}
+			key, ok := keyMap[name]
+			var info *MemeInfo
+			if ok {
+				info = infos[key]
 			}
 			mu.RUnlock()
-			if len(available) == 0 {
-				ctx.SendChain(message.Text("找不到符合参数数量的表情"))
+			if !ok || info == nil {
+				ctx.SendChain(message.Text("未找到表情：", name))
 				return
 			}
-			chosen := available[rand.Intn(len(available))]
-			doGenerate(ctx, chosen, images, texts, nil)
+			ctx.SendChain(message.Text(formatMemeDetail(info)))
 		})
 
-	// 关键词触发表情生成（核心功能）
-	// 使用 OnMessage 低优先级匹配，检查消息是否以某个表情关键词开头
-	en.OnMessage(matchMemeKeyword).SetBlock(true).Limit(ctxext.LimitByUser).
+	// 随机表情包
+	en.OnFullMatchGroup([]string{"随机表情包", "随机meme", "随机memes"}).
+		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			info := ctx.State["meme_info"].(*MemeInfo)
-			images := ctx.State["meme_images"].([]imageParam)
-			texts := ctx.State["meme_texts"].([]string)
-			var options map[string]interface{}
-			if opt, ok := ctx.State["meme_options"]; ok {
-				options = opt.(map[string]interface{})
-			}
-			doGenerate(ctx, info, images, texts, options)
-		})
-}
-
-// ===================== 表情列表管理 =====================
-
-func loadMemes() {
-	infos, err := getMemeInfos()
-	if err != nil {
-		logrus.Errorf("[memes] 加载表情列表失败: %v", err)
-		return
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	memeInfoMap = make(map[string]*MemeInfo, len(infos))
-	keywordMap = make(map[string]*MemeInfo, len(infos)*3)
-	shortcutMap = make(map[string]*shortcutEntry)
-	shortcutRegexps = nil
-
-	for i := range infos {
-		info := &infos[i]
-		memeInfoMap[info.Key] = info
-
-		// 建立关键词索引
-		for _, kw := range info.Keywords {
-			keywordMap[strings.ToLower(kw)] = info
-		}
-		// key 自身也作为关键词
-		keywordMap[strings.ToLower(info.Key)] = info
-
-		// 建立快捷指令索引
-		for _, sc := range info.Shortcuts {
-			shortcutMap[sc.Pattern] = &shortcutEntry{info: info, shortcut: sc}
-			re, err := regexp.Compile("^(?:" + sc.Pattern + ")$")
-			if err != nil {
-				logrus.Warnf("[memes] 编译快捷指令正则失败 %s: %v", sc.Pattern, err)
-				continue
-			}
-			shortcutRegexps = append(shortcutRegexps, &shortcutMatcher{
-				re:       re,
-				info:     info,
-				shortcut: sc,
-			})
-		}
-	}
-
-	logrus.Infof("[memes] 加载完成: %d 个表情, %d 个关键词, %d 个快捷指令",
-		len(memeInfoMap), len(keywordMap), len(shortcutRegexps))
-}
-
-// findMemeInfo 通过关键词或 key 查找表情信息
-func findMemeInfo(name string) *MemeInfo {
-	lower := strings.ToLower(name)
-	mu.RLock()
-	defer mu.RUnlock()
-	if info, ok := keywordMap[lower]; ok {
-		return info
-	}
-	if info, ok := memeInfoMap[lower]; ok {
-		return info
-	}
-	return nil
-}
-
-// ===================== 消息匹配 =====================
-
-// imageParam 用于存储待使用的图片信息
-type imageParam struct {
-	name string // 名字（用户昵称等）
-	url  string // 图片 URL
-	data []byte // 图片数据（二选一）
-}
-
-// matchMemeKeyword 匹配消息中的表情关键词
-func matchMemeKeyword(ctx *zero.Ctx) bool {
-	msg := ctx.MessageString()
-	if msg == "" {
-		return false
-	}
-
-	// 提取纯文本部分（去掉 CQ 码）
-	plainText := extractPlainText(ctx)
-	if plainText == "" {
-		return false
-	}
-	plainText = strings.TrimSpace(plainText)
-
-	mu.RLock()
-	defer mu.RUnlock()
-
-	// 1. 先检查快捷指令（正则匹配完整消息）
-	for _, sm := range shortcutRegexps {
-		if sm.re.MatchString(plainText) {
-			ctx.State["meme_info"] = sm.info
-			ctx.State["meme_options"] = sm.shortcut.Options
-			images, texts := extractParams(ctx)
-			// 追加快捷指令中预设的文字
-			texts = append(sm.shortcut.Texts, texts...)
-			ctx.State["meme_images"] = images
-			ctx.State["meme_texts"] = texts
-			return true
-		}
-	}
-
-	// 2. 通过关键词前缀匹配
-	// 尝试找到最长匹配的关键词
-	var bestInfo *MemeInfo
-	var bestKeyword string
-	for kw, info := range keywordMap {
-		lower := strings.ToLower(plainText)
-		if strings.HasPrefix(lower, kw) && len(kw) > len(bestKeyword) {
-			// 确保关键词后面是空格、CQ码或结尾
-			rest := plainText[len(kw):]
-			if rest == "" || rest[0] == ' ' || rest[0] == '[' || rest[0] == '\n' {
-				bestInfo = info
-				bestKeyword = kw
-			}
-		}
-	}
-
-	if bestInfo == nil {
-		return false
-	}
-
-	// 提取关键词后面的参数
-	ctx.State["meme_info"] = bestInfo
-	images, texts := extractParams(ctx)
-
-	// 从关键词后面提取额外的文字参数
-	rest := strings.TrimSpace(plainText[len(bestKeyword):])
-	if rest != "" {
-		// 过滤掉 CQ 码部分
-		cqRe := regexp.MustCompile(`\[CQ:[^\]]+\]`)
-		cleanRest := strings.TrimSpace(cqRe.ReplaceAllString(rest, ""))
-		if cleanRest != "" {
-			// 按空格分割文字参数
-			parts := strings.Fields(cleanRest)
-			for _, p := range parts {
-				if p == "自己" {
-					// "自己" -> 使用发送者头像
-					uid := ctx.Event.UserID
-					avatarURL := fmt.Sprintf("https://q4.qlogo.cn/g?b=qq&nk=%d&s=640", uid)
-					name := ctx.CardOrNickName(uid)
-					images = append(images, imageParam{name: name, url: avatarURL})
-				} else if strings.HasPrefix(p, "#") {
-					// 忽略 #name 标记，已在图片名中处理
-				} else {
-					texts = append(texts, p)
+			mu.RLock()
+			// 过滤出只需要1张图片不需要文字的表情
+			candidates := make([]*MemeInfo, 0)
+			for _, info := range infos {
+				if info.Params.MinImages <= 1 && info.Params.MaxImages >= 1 && info.Params.MinTexts == 0 {
+					candidates = append(candidates, info)
 				}
 			}
-		}
-	}
+			mu.RUnlock()
+			if len(candidates) == 0 {
+				ctx.SendChain(message.Text("暂无可用表情"))
+				return
+			}
+			info := candidates[rand.Intn(len(candidates))]
+			// 使用发送者头像生成
+			avatarURL := getAvatarURL(ctx.Event.UserID)
+			nickname := getSenderNickname(ctx)
+			handleMemeGeneration(ctx, info, avatarURL, nickname, "", nil)
+		})
 
-	ctx.State["meme_images"] = images
-	ctx.State["meme_texts"] = texts
-	return true
+	// 通用表情匹配处理 - 使用 OnMessage 匹配所有消息
+	en.OnMessage(func(ctx *zero.Ctx) bool {
+		// 获取纯文本消息
+		msg := extractPlainText(ctx)
+		if msg == "" {
+			return false
+		}
+		// 去除开头的#
+		msg = strings.TrimPrefix(msg, "#")
+		msg = strings.TrimSpace(msg)
+		if msg == "" {
+			return false
+		}
+		mu.RLock()
+		target := findLongestMatchingKey(msg, keyMap)
+		mu.RUnlock()
+		if target == "" {
+			return false
+		}
+		// 保存匹配信息到 State
+		ctx.State["meme_keyword"] = target
+		ctx.State["meme_msg"] = msg
+		return true
+	}).SetBlock(true).Limit(ctxext.LimitByUser).
+		Handle(func(ctx *zero.Ctx) {
+			target := ctx.State["meme_keyword"].(string)
+			msg := ctx.State["meme_msg"].(string)
+
+			mu.RLock()
+			key := keyMap[target]
+			info := infos[key]
+			mu.RUnlock()
+
+			if info == nil {
+				return
+			}
+
+			// 提取关键词后面的文字
+			textPart := strings.TrimPrefix(msg, target)
+			textPart = strings.TrimSpace(textPart)
+
+			// 检查是否请求详情
+			if textPart == "详情" || textPart == "帮助" {
+				ctx.SendChain(message.Text(formatMemeDetail(info)))
+				return
+			}
+
+			// 解析@用户和图片
+			atUsers := extractAtUsers(ctx)
+			imgURLs := extractImageURLs(ctx)
+
+			// 确定使用的头像URL和昵称
+			var avatarURL string
+			var nickname string
+
+			if len(atUsers) > 0 {
+				// 有@用户，使用被@用户的头像和昵称
+				avatarURL = getAvatarURL(atUsers[0].QQ)
+				nickname = atUsers[0].Nickname
+				if nickname == "" {
+					nickname = ctx.CardOrNickName(atUsers[0].QQ)
+				}
+			} else {
+				// 没有@用户，使用发送者的头像和昵称
+				avatarURL = getAvatarURL(ctx.Event.UserID)
+				nickname = getSenderNickname(ctx)
+			}
+
+			handleMemeGeneration(ctx, info, avatarURL, nickname, textPart, imgURLs)
+		})
 }
 
-// extractPlainText 从消息中提取纯文本
+// atUserInfo @用户信息
+type atUserInfo struct {
+	QQ       int64
+	Nickname string
+}
+
+// extractAtUsers 提取消息中的@用户
+func extractAtUsers(ctx *zero.Ctx) []atUserInfo {
+	users := make([]atUserInfo, 0)
+	for _, seg := range ctx.Event.Message {
+		if seg.Type == "at" {
+			qqStr := seg.Data["qq"]
+			qq, err := strconv.ParseInt(qqStr, 10, 64)
+			if err != nil {
+				continue
+			}
+			nick := seg.Data["name"]
+			if nick == "" {
+				nick = ctx.CardOrNickName(qq)
+			}
+			users = append(users, atUserInfo{QQ: qq, Nickname: nick})
+		}
+	}
+	return users
+}
+
+// extractImageURLs 提取消息中的图片URL
+func extractImageURLs(ctx *zero.Ctx) []string {
+	urls := make([]string, 0)
+	for _, seg := range ctx.Event.Message {
+		if seg.Type == "image" {
+			url := seg.Data["url"]
+			if url != "" {
+				urls = append(urls, url)
+			}
+		}
+	}
+	return urls
+}
+
+// extractPlainText 提取消息纯文本
 func extractPlainText(ctx *zero.Ctx) string {
 	var sb strings.Builder
 	for _, seg := range ctx.Event.Message {
@@ -409,141 +307,250 @@ func extractPlainText(ctx *zero.Ctx) string {
 			sb.WriteString(seg.Data["text"])
 		}
 	}
-	return sb.String()
+	return strings.TrimSpace(sb.String())
 }
 
-// extractParams 从消息中提取图片和文字参数
-func extractParams(ctx *zero.Ctx) (images []imageParam, texts []string) {
-	for _, seg := range ctx.Event.Message {
-		switch seg.Type {
-		case "image":
-			url := seg.Data["url"]
-			if url == "" {
-				url = seg.Data["file"]
+// getAvatarURL 获取用户头像URL
+func getAvatarURL(qq int64) string {
+	return fmt.Sprintf("https://q4.qlogo.cn/g?b=qq&nk=%d&s=640", qq)
+}
+
+// getSenderNickname 获取发送者昵称
+func getSenderNickname(ctx *zero.Ctx) string {
+	name := ctx.CardOrNickName(ctx.Event.UserID)
+	if name == "" {
+		name = ctx.Event.Sender.NickName
+	}
+	if name == "" {
+		name = strconv.FormatInt(ctx.Event.UserID, 10)
+	}
+	return name
+}
+
+// findLongestMatchingKey 查找消息开头匹配的最长关键词
+func findLongestMatchingKey(msg string, km map[string]string) string {
+	var longest string
+	for k := range km {
+		if strings.HasPrefix(msg, k) && len(k) > len(longest) {
+			longest = k
+		}
+	}
+	return longest
+}
+
+// handleMemeGeneration 处理表情生成逻辑
+func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string, nickname string, textPart string, imgURLs []string) {
+	// 获取@用户列表（可能有多个）
+	atUsers := extractAtUsers(ctx)
+
+	// 构建图片列表
+	imageIDs := make([]MemeImage, 0)
+
+	if info.Params.MaxImages > 0 {
+		// 收集所有需要的图片URL
+		allImgURLs := make([]string, 0)
+
+		if len(imgURLs) > 0 {
+			// 消息中带了图片
+			allImgURLs = append(allImgURLs, imgURLs...)
+		} else if len(atUsers) > 0 {
+			// 有@用户，使用被@用户的头像
+			for _, u := range atUsers {
+				allImgURLs = append(allImgURLs, getAvatarURL(u.QQ))
 			}
-			if url != "" {
-				images = append(images, imageParam{name: "", url: url})
-			}
-		case "at":
-			qq := seg.Data["qq"]
-			if qq != "" && qq != "all" {
-				uid, err := strconv.ParseInt(qq, 10, 64)
-				if err == nil {
-					avatarURL := fmt.Sprintf("https://q4.qlogo.cn/g?b=qq&nk=%d&s=640", uid)
-					name := ctx.CardOrNickName(uid)
-					images = append(images, imageParam{name: name, url: avatarURL})
+		}
+
+		// 如果没有图片，使用默认头像（发送者自己）
+		if len(allImgURLs) == 0 {
+			allImgURLs = append(allImgURLs, defaultAvatarURL)
+		}
+
+		// 如果图片不够最小要求，补上发送者头像到最前面
+		if len(allImgURLs) < info.Params.MinImages {
+			senderURL := getAvatarURL(ctx.Event.UserID)
+			// 检查是否已经包含发送者头像
+			hasSender := false
+			for _, u := range allImgURLs {
+				if u == senderURL {
+					hasSender = true
+					break
 				}
 			}
+			if !hasSender {
+				allImgURLs = append([]string{senderURL}, allImgURLs...)
+			}
 		}
-	}
-	return
-}
 
-// ===================== 表情生成 =====================
-
-func doGenerate(ctx *zero.Ctx, info *MemeInfo, images []imageParam, texts []string, options map[string]interface{}) {
-	params := info.Params
-
-	// 当所需图片数为 2 且已指定 1 张图片时，用发送者头像作为第一张
-	if params.MinImages == 2 && len(images) == 1 {
-		uid := ctx.Event.UserID
-		avatarURL := fmt.Sprintf("https://q4.qlogo.cn/g?b=qq&nk=%d&s=640", uid)
-		name := ctx.CardOrNickName(uid)
-		images = append([]imageParam{{name: name, url: avatarURL}}, images...)
-	}
-
-	// 当所需图片数为 1 且没有图片时，使用发送者头像
-	if params.MinImages >= 1 && len(images) == 0 {
-		uid := ctx.Event.UserID
-		avatarURL := fmt.Sprintf("https://q4.qlogo.cn/g?b=qq&nk=%d&s=640", uid)
-		name := ctx.CardOrNickName(uid)
-		images = append(images, imageParam{name: name, url: avatarURL})
-	}
-
-	// 如果还是不够图片，提示
-	if len(images) < params.MinImages {
-		num := strconv.Itoa(params.MinImages)
-		if params.MaxImages > params.MinImages {
-			num += " ~ " + strconv.Itoa(params.MaxImages)
+		// 截取到最大图片数
+		if len(allImgURLs) > info.Params.MaxImages {
+			allImgURLs = allImgURLs[:info.Params.MaxImages]
 		}
-		ctx.SendChain(message.Text(fmt.Sprintf("图片数量不足，需要 %s 张图片", num)))
-		return
-	}
 
-	// 截断多余图片
-	if params.MaxImages > 0 && len(images) > params.MaxImages {
-		images = images[:params.MaxImages]
-	}
+		// 上传图片
+		for i, imgURL := range allImgURLs {
+			var imageID string
+			var err error
 
-	// 当需要文字但没有输入时，使用默认文字
-	if params.MinTexts > 0 && len(texts) == 0 && len(params.DefaultTexts) > 0 {
-		texts = params.DefaultTexts
-	}
-
-	// 文字数量检查
-	if len(texts) < params.MinTexts {
-		num := strconv.Itoa(params.MinTexts)
-		if params.MaxTexts > params.MinTexts {
-			num += " ~ " + strconv.Itoa(params.MaxTexts)
-		}
-		ctx.SendChain(message.Text(fmt.Sprintf("文字数量不足，需要 %s 段文字", num)))
-		return
-	}
-	if params.MaxTexts > 0 && len(texts) > params.MaxTexts {
-		texts = texts[:params.MaxTexts]
-	}
-
-	// 上传图片并收集 MemeImage
-	memeImages := make([]MemeImage, 0, len(images))
-	for _, img := range images {
-		var imageID string
-		var err error
-
-		if img.url != "" {
-			// 先尝试通过 URL 直接上传给 meme-generator-rs
-			imageID, err = uploadImageByURL(img.url)
+			// 先尝试直接通过URL上传
+			imageID, err = uploadImageByURL(imgURL)
 			if err != nil {
-				// 如果 URL 上传失败，尝试先下载再上传
-				logrus.Debugf("[memes] URL 上传失败，尝试下载后上传: %v", err)
-				data, dlErr := web.GetData(img.url)
+				// URL上传失败，尝试先下载再通过base64上传
+				logrus.Debugf("[memes] URL上传失败，尝试下载后base64上传: %v", err)
+				imgData, dlErr := web.GetData(imgURL)
 				if dlErr != nil {
-					ctx.SendChain(message.Text("图片下载失败: ", dlErr))
+					ctx.SendChain(message.Text("ERROR: 获取图片失败: ", dlErr))
 					return
 				}
-				imageID, err = uploadImage(data)
+				imageID, err = uploadImageByBase64(imgData)
 				if err != nil {
-					ctx.SendChain(message.Text("图片上传失败: ", err))
+					ctx.SendChain(message.Text("ERROR: 上传图片失败: ", err))
 					return
 				}
 			}
-		} else if img.data != nil {
-			imageID, err = uploadImage(img.data)
-			if err != nil {
-				ctx.SendChain(message.Text("图片上传失败: ", err))
-				return
-			}
-		} else {
-			continue
+			imageIDs = append(imageIDs, MemeImage{
+				Name: fmt.Sprintf("image_%d", i),
+				ID:   imageID,
+			})
 		}
+	}
 
-		name := img.name
-		if name == "" {
-			name = "image"
+	// 处理文字
+	texts := make([]string, 0)
+	if textPart != "" && info.Params.MaxTexts > 0 {
+		// 用/分隔多段文字
+		parts := strings.SplitN(textPart, "/", info.Params.MaxTexts)
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				texts = append(texts, p)
+			}
 		}
-		memeImages = append(memeImages, MemeImage{Name: name, ID: imageID})
+	}
+
+	// 如果需要文字但没有提供，使用昵称
+	if len(texts) == 0 && info.Params.MinTexts > 0 {
+		if len(atUsers) > 0 {
+			// 使用@用户的昵称
+			for _, u := range atUsers {
+				nick := u.Nickname
+				if nick == "" {
+					nick = ctx.CardOrNickName(u.QQ)
+				}
+				texts = append(texts, nick)
+				if len(texts) >= info.Params.MinTexts {
+					break
+				}
+			}
+		}
+		// 还是不够就用发送者昵称
+		if len(texts) < info.Params.MinTexts {
+			texts = append(texts, nickname)
+		}
+	}
+
+	// 文字太少校验
+	if len(texts) < info.Params.MinTexts {
+		ctx.SendChain(message.Text(fmt.Sprintf("需要至少%d段文字，请用/分隔！", info.Params.MinTexts)))
+		return
+	}
+
+	// 如果有文字但表情不支持文字
+	if textPart != "" && info.Params.MaxTexts == 0 {
+		// 忽略多余的文字，不报错
+	}
+
+	// 截取文字到最大数量
+	if len(texts) > info.Params.MaxTexts && info.Params.MaxTexts > 0 {
+		texts = texts[:info.Params.MaxTexts]
 	}
 
 	// 生成表情
-	result, err := generateMeme(info.Key, memeImages, texts, options)
+	data, err := generateMeme(info.Key, imageIDs, texts, nil)
 	if err != nil {
-		if memeErr, ok := err.(*MemeGeneratorError); ok {
-			ctx.SendChain(message.Text("表情生成失败: ", memeErr.Detail))
-		} else {
-			ctx.SendChain(message.Text("表情生成失败: ", err))
-		}
+		ctx.SendChain(message.Text("ERROR: 生成表情失败: ", err))
 		return
 	}
 
-	b64 := base64.StdEncoding.EncodeToString(result)
+	// 发送结果
+	b64 := base64.StdEncoding.EncodeToString(data)
 	ctx.SendChain(message.Image("base64://" + b64))
+}
+
+// formatMemeDetail 格式化表情详情
+func formatMemeDetail(info *MemeInfo) string {
+	keywords := strings.Join(info.Keywords, "、")
+	detail := fmt.Sprintf(
+		"【代码】%s\n【名称】%s\n【最大图片数量】%d\n【最小图片数量】%d\n【最大文本数量】%d\n【最小文本数量】%d",
+		info.Key, keywords,
+		info.Params.MaxImages, info.Params.MinImages,
+		info.Params.MaxTexts, info.Params.MinTexts,
+	)
+	if len(info.Params.DefaultTexts) > 0 {
+		detail += "\n【默认文本】" + strings.Join(info.Params.DefaultTexts, "/")
+	}
+	return detail
+}
+
+// loadMemeData 加载表情数据（优先从本地缓存，否则从API获取）
+func loadMemeData() error {
+	infosPath := dataDir + "/infos.json"
+	keymapPath := dataDir + "/keymap.json"
+
+	var localInfos map[string]*MemeInfo
+	var localKeyMap map[string]string
+
+	// 尝试从本地缓存读取
+	if file.IsExist(infosPath) && file.IsExist(keymapPath) {
+		infosData, err := os.ReadFile(infosPath)
+		if err == nil {
+			keymapData, err := os.ReadFile(keymapPath)
+			if err == nil {
+				err1 := json.Unmarshal(infosData, &localInfos)
+				err2 := json.Unmarshal(keymapData, &localKeyMap)
+				if err1 == nil && err2 == nil && len(localInfos) > 0 && len(localKeyMap) > 0 {
+					mu.Lock()
+					infos = localInfos
+					keyMap = localKeyMap
+					mu.Unlock()
+					logrus.Infof("[memes] 从本地缓存加载了 %d 个表情", len(localInfos))
+					return nil
+				}
+			}
+		}
+	}
+
+	// 从API获取
+	logrus.Info("[memes] 正在从API获取表情列表...")
+	memeInfos, err := fetchMemeInfos()
+	if err != nil {
+		return fmt.Errorf("从API获取表情列表失败: %w", err)
+	}
+
+	newInfos := make(map[string]*MemeInfo)
+	newKeyMap := make(map[string]string)
+	for i := range memeInfos {
+		info := &memeInfos[i]
+		newInfos[info.Key] = info
+		for _, kw := range info.Keywords {
+			newKeyMap[kw] = info.Key
+		}
+	}
+
+	mu.Lock()
+	infos = newInfos
+	keyMap = newKeyMap
+	mu.Unlock()
+
+	// 保存到本地缓存
+	infosJSON, err := json.Marshal(newInfos)
+	if err == nil {
+		_ = os.WriteFile(infosPath, infosJSON, 0644)
+	}
+	keymapJSON, err := json.Marshal(newKeyMap)
+	if err == nil {
+		_ = os.WriteFile(keymapPath, keymapJSON, 0644)
+	}
+
+	logrus.Infof("[memes] 从API加载了 %d 个表情", len(newInfos))
+	return nil
 }
