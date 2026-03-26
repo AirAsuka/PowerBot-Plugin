@@ -5,7 +5,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
+	"net/http"
 	"os"
 	"sort"
 	"strconv"
@@ -13,7 +15,6 @@ import (
 	"sync"
 
 	"github.com/FloatTech/floatbox/file"
-	"github.com/FloatTech/floatbox/web"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
@@ -36,6 +37,8 @@ var (
 	dataDir string
 	// mu 保护 keyMap 和 infos 的读写锁
 	mu sync.RWMutex
+	// dataLoaded 标记数据是否已加载
+	dataLoaded bool
 )
 
 func init() {
@@ -55,16 +58,18 @@ func init() {
 	dataDir = file.BOTPATH + "/" + en.DataFolder()
 	_ = os.MkdirAll(dataDir, 0755)
 
-	// 初始化加载表情列表
-	if err := loadMemeData(); err != nil {
-		logrus.Warnf("[memes] 初始化加载表情列表失败: %v, 将在首次使用时重新加载", err)
-	}
+	// ========== 先注册所有命令，再后台加载数据 ==========
 
 	// 表情包列表
 	en.OnFullMatchGroup([]string{"表情包列表", "meme列表", "memes列表"}).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
 			ctx.SendChain(message.Text("正在生成表情包列表，请稍候..."))
+			// 先确保API可达
+			if !checkAPI() {
+				ctx.SendChain(message.Text("ERROR: 无法连接到表情包API(", baseURL, ")"))
+				return
+			}
 			data, err := renderMemeList()
 			if err != nil {
 				ctx.SendChain(message.Text("ERROR: ", err))
@@ -114,6 +119,7 @@ func init() {
 	en.OnRegex(`^(表情包|memes?)搜索\s*(.+)$`).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
+			ensureDataLoaded()
 			keyword := ctx.State["regex_matched"].([]string)[2]
 			keyword = strings.TrimSpace(keyword)
 			if keyword == "" {
@@ -148,6 +154,7 @@ func init() {
 	en.OnRegex(`^(表情包|memes?)详情\s*(.+)$`).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
+			ensureDataLoaded()
 			name := strings.TrimSpace(ctx.State["regex_matched"].([]string)[2])
 			mu.RLock()
 			key, ok := keyMap[name]
@@ -167,6 +174,7 @@ func init() {
 	en.OnFullMatchGroup([]string{"随机表情包", "随机meme", "随机memes"}).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
+			ensureDataLoaded()
 			mu.RLock()
 			// 过滤出只需要1张图片不需要文字的表情
 			candidates := make([]*MemeInfo, 0)
@@ -177,7 +185,7 @@ func init() {
 			}
 			mu.RUnlock()
 			if len(candidates) == 0 {
-				ctx.SendChain(message.Text("暂无可用表情"))
+				ctx.SendChain(message.Text("暂无可用表情，请先发送\"表情包更新\""))
 				return
 			}
 			info := candidates[rand.Intn(len(candidates))]
@@ -200,6 +208,8 @@ func init() {
 		if msg == "" {
 			return false
 		}
+		// 确保数据已加载
+		ensureDataLoaded()
 		mu.RLock()
 		target := findLongestMatchingKey(msg, keyMap)
 		mu.RUnlock()
@@ -257,6 +267,35 @@ func init() {
 
 			handleMemeGeneration(ctx, info, avatarURL, nickname, textPart, imgURLs)
 		})
+
+	// ========== 后台异步加载表情数据 ==========
+	go func() {
+		if err := loadMemeData(); err != nil {
+			logrus.Warnf("[memes] 后台加载表情列表失败: %v, 将在首次使用时重新加载", err)
+		}
+	}()
+}
+
+// ensureDataLoaded 确保数据已加载，如果没有则尝试加载
+func ensureDataLoaded() {
+	mu.RLock()
+	loaded := dataLoaded
+	mu.RUnlock()
+	if !loaded {
+		logrus.Info("[memes] 数据未加载，尝试加载...")
+		_ = loadMemeData()
+	}
+}
+
+// checkAPI 检查API是否可达
+func checkAPI() bool {
+	resp, err := httpClient.Get(baseURL + "/meme/keys")
+	if err != nil {
+		logrus.Warnf("[memes] API不可达: %v", err)
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
 // atUserInfo @用户信息
@@ -388,15 +427,12 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 
 		// 上传图片
 		for i, imgURL := range allImgURLs {
-			var imageID string
-			var err error
-
-			// 先尝试直接通过URL上传
-			imageID, err = uploadImageByURL(imgURL)
+			logrus.Infof("[memes] 上传第%d张图片: %s", i+1, imgURL)
+			imageID, err := uploadImageByURL(imgURL)
 			if err != nil {
+				logrus.Warnf("[memes] URL上传失败: %v, 尝试下载后base64上传", err)
 				// URL上传失败，尝试先下载再通过base64上传
-				logrus.Debugf("[memes] URL上传失败，尝试下载后base64上传: %v", err)
-				imgData, dlErr := web.GetData(imgURL)
+				imgData, dlErr := httpGetBytes(imgURL)
 				if dlErr != nil {
 					ctx.SendChain(message.Text("ERROR: 获取图片失败: ", dlErr))
 					return
@@ -454,11 +490,6 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 		return
 	}
 
-	// 如果有文字但表情不支持文字
-	if textPart != "" && info.Params.MaxTexts == 0 {
-		// 忽略多余的文字，不报错
-	}
-
 	// 截取文字到最大数量
 	if len(texts) > info.Params.MaxTexts && info.Params.MaxTexts > 0 {
 		texts = texts[:info.Params.MaxTexts]
@@ -474,6 +505,16 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 	// 发送结果
 	b64 := base64.StdEncoding.EncodeToString(data)
 	ctx.SendChain(message.Image("base64://" + b64))
+}
+
+// httpGetBytes 通过HTTP GET获取数据
+func httpGetBytes(url string) ([]byte, error) {
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
 }
 
 // formatMemeDetail 格式化表情详情
@@ -511,6 +552,7 @@ func loadMemeData() error {
 					mu.Lock()
 					infos = localInfos
 					keyMap = localKeyMap
+					dataLoaded = true
 					mu.Unlock()
 					logrus.Infof("[memes] 从本地缓存加载了 %d 个表情", len(localInfos))
 					return nil
@@ -539,6 +581,7 @@ func loadMemeData() error {
 	mu.Lock()
 	infos = newInfos
 	keyMap = newKeyMap
+	dataLoaded = true
 	mu.Unlock()
 
 	// 保存到本地缓存
@@ -551,6 +594,6 @@ func loadMemeData() error {
 		_ = os.WriteFile(keymapPath, keymapJSON, 0644)
 	}
 
-	logrus.Infof("[memes] 从API加载了 %d 个表情", len(newInfos))
+	logrus.Infof("[memes] 从API加载了 %d 个表情, %d 个关键词", len(newInfos), len(newKeyMap))
 	return nil
 }
