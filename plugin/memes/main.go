@@ -25,7 +25,7 @@ import (
 
 const (
 	// baseURL meme-generator-rs API 地址
-	baseURL = "http://127.0.0.1:2233/meme"
+	baseURL = "http://127.0.0.1:2233"
 )
 
 var (
@@ -42,6 +42,8 @@ var (
 )
 
 func init() {
+	logrus.Info("[memes] ========== 插件初始化开始 ==========")
+
 	en := control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
 		Brief:            "表情包制作",
@@ -55,17 +57,20 @@ func init() {
 			"Tips: 使用表情关键词时可@用户使用对方头像，不@则用自己头像",
 		PrivateDataFolder: "memes",
 	})
+	logrus.Info("[memes] control.AutoRegister 完成")
+
 	dataDir = file.BOTPATH + "/" + en.DataFolder()
 	_ = os.MkdirAll(dataDir, 0755)
+	logrus.Infof("[memes] 数据目录: %s", dataDir)
 
-	// ========== 先注册所有命令，再后台加载数据 ==========
+	// ========== 先注册所有命令 ==========
 
 	// 表情包列表
 	en.OnFullMatchGroup([]string{"表情包列表", "meme列表", "memes列表"}).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
+			logrus.Info("[memes] >>> 触发: 表情包列表")
 			ctx.SendChain(message.Text("正在生成表情包列表，请稍候..."))
-			// 先确保API可达
 			if !checkAPI() {
 				ctx.SendChain(message.Text("ERROR: 无法连接到表情包API(", baseURL, ")"))
 				return
@@ -78,11 +83,13 @@ func init() {
 			b64 := base64.StdEncoding.EncodeToString(data)
 			ctx.SendChain(message.Image("base64://" + b64))
 		})
+	logrus.Info("[memes] 已注册: 表情包列表")
 
 	// 表情包帮助
 	en.OnFullMatchGroup([]string{"表情包帮助", "meme帮助", "memes帮助"}).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
+			logrus.Info("[memes] >>> 触发: 表情包帮助")
 			ctx.SendChain(message.Text(
 				"【表情包列表】查看所有可用表情\n",
 				"【{表情名称}】使用表情名称制作表情\n",
@@ -95,13 +102,14 @@ func init() {
 				"Tips: 多段文字用/分隔",
 			))
 		})
+	logrus.Info("[memes] 已注册: 表情包帮助")
 
 	// 表情包更新
 	en.OnFullMatchGroup([]string{"表情包更新", "meme更新", "memes更新"}).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
+			logrus.Info("[memes] >>> 触发: 表情包更新")
 			ctx.SendChain(message.Text("正在更新表情包列表..."))
-			// 清除缓存文件
 			_ = os.Remove(dataDir + "/infos.json")
 			_ = os.Remove(dataDir + "/keymap.json")
 			err := loadMemeData()
@@ -114,11 +122,13 @@ func init() {
 			mu.RUnlock()
 			ctx.SendChain(message.Text(fmt.Sprintf("更新完成！共加载 %d 个表情", count)))
 		})
+	logrus.Info("[memes] 已注册: 表情包更新")
 
 	// 表情包搜索
 	en.OnRegex(`^(表情包|memes?)搜索\s*(.+)$`).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
+			logrus.Info("[memes] >>> 触发: 表情包搜索")
 			ensureDataLoaded()
 			keyword := ctx.State["regex_matched"].([]string)[2]
 			keyword = strings.TrimSpace(keyword)
@@ -149,11 +159,13 @@ func init() {
 			}
 			ctx.SendChain(message.Text(result))
 		})
+	logrus.Info("[memes] 已注册: 表情包搜索")
 
 	// 表情包详情
 	en.OnRegex(`^(表情包|memes?)详情\s*(.+)$`).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
+			logrus.Info("[memes] >>> 触发: 表情包详情")
 			ensureDataLoaded()
 			name := strings.TrimSpace(ctx.State["regex_matched"].([]string)[2])
 			mu.RLock()
@@ -169,14 +181,15 @@ func init() {
 			}
 			ctx.SendChain(message.Text(formatMemeDetail(info)))
 		})
+	logrus.Info("[memes] 已注册: 表情包详情")
 
 	// 随机表情包
 	en.OnFullMatchGroup([]string{"随机表情包", "随机meme", "随机memes"}).
 		SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
+			logrus.Info("[memes] >>> 触发: 随机表情包")
 			ensureDataLoaded()
 			mu.RLock()
-			// 过滤出只需要1张图片不需要文字的表情
 			candidates := make([]*MemeInfo, 0)
 			for _, info := range infos {
 				if info.Params.MinImages <= 1 && info.Params.MaxImages >= 1 && info.Params.MinTexts == 0 {
@@ -189,26 +202,23 @@ func init() {
 				return
 			}
 			info := candidates[rand.Intn(len(candidates))]
-			// 使用发送者头像生成
 			avatarURL := getAvatarURL(ctx.Event.UserID)
 			nickname := getSenderNickname(ctx)
 			handleMemeGeneration(ctx, info, avatarURL, nickname, "", nil)
 		})
+	logrus.Info("[memes] 已注册: 随机表情包")
 
-	// 通用表情匹配处理 - 使用 OnMessage 匹配所有消息
+	// 通用表情匹配处理
 	en.OnMessage(func(ctx *zero.Ctx) bool {
-		// 获取纯文本消息
 		msg := extractPlainText(ctx)
 		if msg == "" {
 			return false
 		}
-		// 去除开头的#
 		msg = strings.TrimPrefix(msg, "#")
 		msg = strings.TrimSpace(msg)
 		if msg == "" {
 			return false
 		}
-		// 确保数据已加载
 		ensureDataLoaded()
 		mu.RLock()
 		target := findLongestMatchingKey(msg, keyMap)
@@ -216,7 +226,7 @@ func init() {
 		if target == "" {
 			return false
 		}
-		// 保存匹配信息到 State
+		logrus.Infof("[memes] OnMessage匹配成功: msg=%q keyword=%q", msg, target)
 		ctx.State["meme_keyword"] = target
 		ctx.State["meme_msg"] = msg
 		return true
@@ -224,6 +234,7 @@ func init() {
 		Handle(func(ctx *zero.Ctx) {
 			target := ctx.State["meme_keyword"].(string)
 			msg := ctx.State["meme_msg"].(string)
+			logrus.Infof("[memes] >>> 触发: 表情生成 keyword=%q msg=%q", target, msg)
 
 			mu.RLock()
 			key := keyMap[target]
@@ -231,70 +242,86 @@ func init() {
 			mu.RUnlock()
 
 			if info == nil {
+				logrus.Warnf("[memes] 未找到表情info: key=%q", key)
 				return
 			}
 
-			// 提取关键词后面的文字
 			textPart := strings.TrimPrefix(msg, target)
 			textPart = strings.TrimSpace(textPart)
 
-			// 检查是否请求详情
 			if textPart == "详情" || textPart == "帮助" {
 				ctx.SendChain(message.Text(formatMemeDetail(info)))
 				return
 			}
 
-			// 解析@用户和图片
 			atUsers := extractAtUsers(ctx)
 			imgURLs := extractImageURLs(ctx)
 
-			// 确定使用的头像URL和昵称
 			var avatarURL string
 			var nickname string
 
 			if len(atUsers) > 0 {
-				// 有@用户，使用被@用户的头像和昵称
 				avatarURL = getAvatarURL(atUsers[0].QQ)
 				nickname = atUsers[0].Nickname
 				if nickname == "" {
 					nickname = ctx.CardOrNickName(atUsers[0].QQ)
 				}
 			} else {
-				// 没有@用户，使用发送者的头像和昵称
 				avatarURL = getAvatarURL(ctx.Event.UserID)
 				nickname = getSenderNickname(ctx)
 			}
 
 			handleMemeGeneration(ctx, info, avatarURL, nickname, textPart, imgURLs)
 		})
+	logrus.Info("[memes] 已注册: 通用表情匹配(OnMessage)")
+
+	// ========== 同时注册一个不经过 control 的全局测试handler ==========
+	zero.OnFullMatch("memes测试", zero.OnlyToMe).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		logrus.Info("[memes] >>> 触发: memes测试(全局)")
+		ctx.SendChain(message.Text("[memes] 插件已加载，测试通过！"))
+	})
+	logrus.Info("[memes] 已注册: memes测试(全局, 不经过control)")
+
+	logrus.Info("[memes] ========== 所有命令注册完成，开始后台加载数据 ==========")
 
 	// ========== 后台异步加载表情数据 ==========
 	go func() {
+		logrus.Info("[memes] 后台goroutine: 开始加载表情数据")
 		if err := loadMemeData(); err != nil {
-			logrus.Warnf("[memes] 后台加载表情列表失败: %v, 将在首次使用时重新加载", err)
+			logrus.Warnf("[memes] 后台加载表情列表失败: %v", err)
+		} else {
+			mu.RLock()
+			logrus.Infof("[memes] 后台加载完成: %d 个表情, %d 个关键词", len(infos), len(keyMap))
+			mu.RUnlock()
 		}
 	}()
+
+	logrus.Info("[memes] ========== 插件初始化结束 ==========")
 }
 
-// ensureDataLoaded 确保数据已加载，如果没有则尝试加载
+// ensureDataLoaded 确保数据已加载
 func ensureDataLoaded() {
 	mu.RLock()
 	loaded := dataLoaded
 	mu.RUnlock()
 	if !loaded {
-		logrus.Info("[memes] 数据未加载，尝试加载...")
-		_ = loadMemeData()
+		logrus.Info("[memes] ensureDataLoaded: 数据未加载，尝试加载...")
+		if err := loadMemeData(); err != nil {
+			logrus.Warnf("[memes] ensureDataLoaded: 加载失败: %v", err)
+		}
 	}
 }
 
 // checkAPI 检查API是否可达
 func checkAPI() bool {
+	logrus.Infof("[memes] checkAPI: 检查 %s", baseURL)
 	resp, err := httpClient.Get(baseURL + "/meme/keys")
 	if err != nil {
-		logrus.Warnf("[memes] API不可达: %v", err)
+		logrus.Warnf("[memes] checkAPI: API不可达: %v", err)
 		return false
 	}
 	resp.Body.Close()
+	logrus.Infof("[memes] checkAPI: 状态码=%d", resp.StatusCode)
 	return resp.StatusCode == http.StatusOK
 }
 
@@ -379,35 +406,29 @@ func findLongestMatchingKey(msg string, km map[string]string) string {
 
 // handleMemeGeneration 处理表情生成逻辑
 func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string, nickname string, textPart string, imgURLs []string) {
-	// 获取@用户列表（可能有多个）
-	atUsers := extractAtUsers(ctx)
+	logrus.Infof("[memes] handleMemeGeneration: key=%s avatar=%s nick=%s text=%q imgs=%d",
+		info.Key, defaultAvatarURL, nickname, textPart, len(imgURLs))
 
-	// 构建图片列表
+	atUsers := extractAtUsers(ctx)
 	imageIDs := make([]MemeImage, 0)
 
 	if info.Params.MaxImages > 0 {
-		// 收集所有需要的图片URL
 		allImgURLs := make([]string, 0)
 
 		if len(imgURLs) > 0 {
-			// 消息中带了图片
 			allImgURLs = append(allImgURLs, imgURLs...)
 		} else if len(atUsers) > 0 {
-			// 有@用户，使用被@用户的头像
 			for _, u := range atUsers {
 				allImgURLs = append(allImgURLs, getAvatarURL(u.QQ))
 			}
 		}
 
-		// 如果没有图片，使用默认头像（发送者自己）
 		if len(allImgURLs) == 0 {
 			allImgURLs = append(allImgURLs, defaultAvatarURL)
 		}
 
-		// 如果图片不够最小要求，补上发送者头像到最前面
 		if len(allImgURLs) < info.Params.MinImages {
 			senderURL := getAvatarURL(ctx.Event.UserID)
-			// 检查是否已经包含发送者头像
 			hasSender := false
 			for _, u := range allImgURLs {
 				if u == senderURL {
@@ -420,18 +441,17 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 			}
 		}
 
-		// 截取到最大图片数
 		if len(allImgURLs) > info.Params.MaxImages {
 			allImgURLs = allImgURLs[:info.Params.MaxImages]
 		}
 
-		// 上传图片
+		logrus.Infof("[memes] 需要上传 %d 张图片", len(allImgURLs))
+
 		for i, imgURL := range allImgURLs {
 			logrus.Infof("[memes] 上传第%d张图片: %s", i+1, imgURL)
 			imageID, err := uploadImageByURL(imgURL)
 			if err != nil {
 				logrus.Warnf("[memes] URL上传失败: %v, 尝试下载后base64上传", err)
-				// URL上传失败，尝试先下载再通过base64上传
 				imgData, dlErr := httpGetBytes(imgURL)
 				if dlErr != nil {
 					ctx.SendChain(message.Text("ERROR: 获取图片失败: ", dlErr))
@@ -450,10 +470,8 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 		}
 	}
 
-	// 处理文字
 	texts := make([]string, 0)
 	if textPart != "" && info.Params.MaxTexts > 0 {
-		// 用/分隔多段文字
 		parts := strings.SplitN(textPart, "/", info.Params.MaxTexts)
 		for _, p := range parts {
 			p = strings.TrimSpace(p)
@@ -463,10 +481,8 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 		}
 	}
 
-	// 如果需要文字但没有提供，使用昵称
 	if len(texts) == 0 && info.Params.MinTexts > 0 {
 		if len(atUsers) > 0 {
-			// 使用@用户的昵称
 			for _, u := range atUsers {
 				nick := u.Nickname
 				if nick == "" {
@@ -478,31 +494,29 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 				}
 			}
 		}
-		// 还是不够就用发送者昵称
 		if len(texts) < info.Params.MinTexts {
 			texts = append(texts, nickname)
 		}
 	}
 
-	// 文字太少校验
 	if len(texts) < info.Params.MinTexts {
 		ctx.SendChain(message.Text(fmt.Sprintf("需要至少%d段文字，请用/分隔！", info.Params.MinTexts)))
 		return
 	}
 
-	// 截取文字到最大数量
 	if len(texts) > info.Params.MaxTexts && info.Params.MaxTexts > 0 {
 		texts = texts[:info.Params.MaxTexts]
 	}
 
-	// 生成表情
+	logrus.Infof("[memes] 调用generateMeme: key=%s images=%d texts=%v", info.Key, len(imageIDs), texts)
 	data, err := generateMeme(info.Key, imageIDs, texts, nil)
 	if err != nil {
+		logrus.Errorf("[memes] 生成表情失败: %v", err)
 		ctx.SendChain(message.Text("ERROR: 生成表情失败: ", err))
 		return
 	}
 
-	// 发送结果
+	logrus.Infof("[memes] 生成成功, 数据大小=%d bytes, 发送中...", len(data))
 	b64 := base64.StdEncoding.EncodeToString(data)
 	ctx.SendChain(message.Image("base64://" + b64))
 }
@@ -532,16 +546,18 @@ func formatMemeDetail(info *MemeInfo) string {
 	return detail
 }
 
-// loadMemeData 加载表情数据（优先从本地缓存，否则从API获取）
+// loadMemeData 加载表情数据
 func loadMemeData() error {
 	infosPath := dataDir + "/infos.json"
 	keymapPath := dataDir + "/keymap.json"
+	logrus.Infof("[memes] loadMemeData: infosPath=%s keymapPath=%s", infosPath, keymapPath)
 
 	var localInfos map[string]*MemeInfo
 	var localKeyMap map[string]string
 
 	// 尝试从本地缓存读取
 	if file.IsExist(infosPath) && file.IsExist(keymapPath) {
+		logrus.Info("[memes] loadMemeData: 发现本地缓存文件，尝试读取")
 		infosData, err := os.ReadFile(infosPath)
 		if err == nil {
 			keymapData, err := os.ReadFile(keymapPath)
@@ -554,19 +570,29 @@ func loadMemeData() error {
 					keyMap = localKeyMap
 					dataLoaded = true
 					mu.Unlock()
-					logrus.Infof("[memes] 从本地缓存加载了 %d 个表情", len(localInfos))
+					logrus.Infof("[memes] loadMemeData: 从本地缓存加载成功: %d 个表情, %d 个关键词", len(localInfos), len(localKeyMap))
 					return nil
 				}
+				logrus.Warnf("[memes] loadMemeData: 缓存解析失败: err1=%v err2=%v infos=%d keymap=%d",
+					err1, err2, len(localInfos), len(localKeyMap))
+			} else {
+				logrus.Warnf("[memes] loadMemeData: 读取keymap缓存失败: %v", err)
 			}
+		} else {
+			logrus.Warnf("[memes] loadMemeData: 读取infos缓存失败: %v", err)
 		}
+	} else {
+		logrus.Info("[memes] loadMemeData: 本地缓存文件不存在")
 	}
 
 	// 从API获取
-	logrus.Info("[memes] 正在从API获取表情列表...")
+	logrus.Infof("[memes] loadMemeData: 从API获取表情列表 %s/meme/infos ...", baseURL)
 	memeInfos, err := fetchMemeInfos()
 	if err != nil {
+		logrus.Errorf("[memes] loadMemeData: API获取失败: %v", err)
 		return fmt.Errorf("从API获取表情列表失败: %w", err)
 	}
+	logrus.Infof("[memes] loadMemeData: API返回 %d 个表情", len(memeInfos))
 
 	newInfos := make(map[string]*MemeInfo)
 	newKeyMap := make(map[string]string)
@@ -594,6 +620,6 @@ func loadMemeData() error {
 		_ = os.WriteFile(keymapPath, keymapJSON, 0644)
 	}
 
-	logrus.Infof("[memes] 从API加载了 %d 个表情, %d 个关键词", len(newInfos), len(newKeyMap))
+	logrus.Infof("[memes] loadMemeData: 加载完成并已缓存, %d 个表情, %d 个关键词", len(newInfos), len(newKeyMap))
 	return nil
 }
