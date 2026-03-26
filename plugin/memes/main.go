@@ -427,6 +427,9 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 			allImgURLs = append(allImgURLs, defaultAvatarURL)
 		}
 
+		// 如果图片不够最小要求，补上发送者头像到末尾
+		// meme-generator-rs 约定: images[0]=目标(被操作者), images[1]=自己(操作者)
+		// 当 A @B 时: images=[B的头像, A的头像]，B是目标，A是操作者
 		if len(allImgURLs) < info.Params.MinImages {
 			senderURL := getAvatarURL(ctx.Event.UserID)
 			hasSender := false
@@ -437,7 +440,7 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 				}
 			}
 			if !hasSender {
-				allImgURLs = append([]string{senderURL}, allImgURLs...)
+				allImgURLs = append(allImgURLs, senderURL) // 追加到末尾，作为操作者
 			}
 		}
 
