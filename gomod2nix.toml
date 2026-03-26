@@ -1,10 +1,6 @@
 schema = 3
 
 [mod]
-  [mod.'github.com/Baidu-AIP/golang-sdk']
-    version = 'v1.1.1'
-    hash = 'sha256-hKshA0K92bKuK92mmtM0osVmqLJcSbeobeWSDpQoRCo='
-
   [mod.'github.com/FloatTech/AnimeAPI']
     version = 'v1.7.1-0.20251028071248-0c948e3db65c'
     hash = 'sha256-EkC8QYgmXElKGM8GzcQ4r/c+lM1ysJOccfoeqhMtAvs='
@@ -61,10 +57,6 @@ schema = 3
     version = 'v0.0.0-20170805034717-80a9c64b256d'
     hash = 'sha256-N19KTxh70IUBqnchFuWkrJD8uuFOIVqv1iSuN3YFIT0='
 
-  [mod.'github.com/ajstarks/svgo']
-    version = 'v0.0.0-20200320125537-f189e35d30ca'
-    hash = 'sha256-ALeRuEJN9jHjGb4wNKJcxC59vVx8Tj7hHikEGkaZZ0s='
-
   [mod.'github.com/andybalholm/cascadia']
     version = 'v1.3.1'
     hash = 'sha256-M0u22DXSeXUaYtl1KoW1qWL46niFpycFkraCEQ/luYA='
@@ -93,10 +85,6 @@ schema = 3
     version = 'v1.0.1'
     hash = 'sha256-yuvxYYngpfVkUg9yAmG99IUVmADTQA0tMbBXe0Fq0Mc='
 
-  [mod.'github.com/ebitengine/oto/v3']
-    version = 'v3.3.2'
-    hash = 'sha256-TPu3qvJscLZbjwIqC3jj0T1md0mX3lQxcC8GAk7kB1w='
-
   [mod.'github.com/ebitengine/purego']
     version = 'v0.9.1'
     hash = 'sha256-iVfU8vaJ7IPa92dUeHeuW+yKvUbe59F/eV7GlDRIAcE='
@@ -104,10 +92,6 @@ schema = 3
   [mod.'github.com/ericpauley/go-quantize']
     version = 'v0.0.0-20200331213906-ae555eb2afa4'
     hash = 'sha256-sMN6D7IlDpDqUWM8ppoE5Sdb7DvLAJaN6qAucBWJ3rs='
-
-  [mod.'github.com/fumiama/ahsai']
-    version = 'v0.1.1'
-    hash = 'sha256-knYw0R5fhjE/asc/TwlGJDzVr+Oaj8sH7kr7x6Mqs3E='
 
   [mod.'github.com/fumiama/cron']
     version = 'v1.3.0'
@@ -185,21 +169,9 @@ schema = 3
     version = 'v1.6.0'
     hash = 'sha256-VWl9sqUzdOuhW0KzQlv0gwwUQClYkmZwSydHG2sALYw='
 
-  [mod.'github.com/gopxl/beep/v2']
-    version = 'v2.1.1'
-    hash = 'sha256-JLCUJCG+VvNlVF296JWIOUvvUFHlqEAJvZfw853qwwU='
-
   [mod.'github.com/guohuiyuan/music-lib']
-    version = 'v1.0.2-0.20260121020416-53f6cb24629d'
+    version = 'v1.0.1-0.20260121020416-53f6cb24629d'
     hash = 'sha256-juVJ/nh6zA5Gu5+dRzIx8tElXLscRQYwY9vLvVKh078='
-
-  [mod.'github.com/jfreymuth/oggvorbis']
-    version = 'v1.0.5'
-    hash = 'sha256-jphTCaPr34ZT9Id4ZZ6zU9Vnxzy6cTjCwjpQ819eGV0='
-
-  [mod.'github.com/jfreymuth/vorbis']
-    version = 'v1.0.2'
-    hash = 'sha256-gVS+/PZ5pDnswpTQNZILcrx5ZNq9ShXd6vXn7Jabes4='
 
   [mod.'github.com/jinzhu/gorm']
     version = 'v1.9.16'
@@ -216,10 +188,6 @@ schema = 3
   [mod.'github.com/json-iterator/go']
     version = 'v1.1.12'
     hash = 'sha256-To8A0h+lbfZ/6zM+2PpRpY3+L6725OPC66lffq6fUoM='
-
-  [mod.'github.com/kanrichan/resvg-go']
-    version = 'v0.0.2-0.20231001163256-63db194ca9f5'
-    hash = 'sha256-plRZ3yhyCafCXmAD4vnFUoCTRsHmLp7Jn9gFKcEKbds='
 
   [mod.'github.com/lithammer/fuzzysearch']
     version = 'v1.1.8'
@@ -300,10 +268,6 @@ schema = 3
   [mod.'github.com/sirupsen/logrus']
     version = 'v1.9.4'
     hash = 'sha256-ltRvmtM3XTCAFwY0IesfRqYIivyXPPuvkFjL4ARh1wg='
-
-  [mod.'github.com/tetratelabs/wazero']
-    version = 'v1.5.0'
-    hash = 'sha256-fGdJM4LJrZA9jxHuYVo4EUQ3I1k0IVG3QQCBCgZkeZI='
 
   [mod.'github.com/tidwall/gjson']
     version = 'v1.18.0'
