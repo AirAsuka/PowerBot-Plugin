@@ -85,6 +85,15 @@ func doUploadImage(req ImageUploadRequest) (string, error) {
 
 // generateMeme 生成表情
 func generateMeme(key string, images []MemeImage, texts []string, options map[string]interface{}) ([]byte, error) {
+	if options == nil {
+		options = make(map[string]interface{})
+	}
+	if images == nil {
+		images = make([]MemeImage, 0)
+	}
+	if texts == nil {
+		texts = make([]string, 0)
+	}
 	reqBody := MemeGenerateRequest{
 		Images:  images,
 		Texts:   texts,
@@ -94,7 +103,7 @@ func generateMeme(key string, images []MemeImage, texts []string, options map[st
 	if err != nil {
 		return nil, fmt.Errorf("序列化生成请求失败: %w", err)
 	}
-	logrus.Infof("[memes] 生成表情 key=%s images=%d texts=%v", key, len(images), texts)
+	logrus.Infof("[memes] 生成表情 key=%s images=%d texts=%v body=%s", key, len(images), texts, string(body))
 	resp, err := httpClient.Post(baseURL+"/memes/"+key, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("生成表情请求失败: %w", err)

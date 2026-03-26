@@ -80,7 +80,7 @@ type MemeImage struct {
 type MemeGenerateRequest struct {
 	Images  []MemeImage            `json:"images"`
 	Texts   []string               `json:"texts"`
-	Options map[string]interface{} `json:"options,omitempty"`
+	Options map[string]interface{} `json:"options"`
 }
 
 // RenderListRequest 渲染列表请求
