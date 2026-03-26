@@ -25,7 +25,7 @@ import (
 
 const (
 	// baseURL meme-generator-rs API 地址
-	baseURL = "http://127.0.0.1:2233"
+	baseURL = "http://127.0.0.1:2233/meme"
 )
 
 var (
