@@ -11,3 +11,5 @@ ZeroBot-Plugin*
 /.direnv
 /result
 data/
+plugin/memes/meme-generator-rs
+plugin/memes/nonebot-plugin-memes-api
