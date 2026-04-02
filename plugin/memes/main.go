@@ -186,7 +186,7 @@ func registerCommands() {
 				return
 			}
 			info := candidates[rand.Intn(len(candidates))]
-			handleMemeGeneration(ctx, info, getAvatarURL(ctx.Event.UserID), getSenderNickname(ctx), "", nil)
+			handleMemeGeneration(ctx, info, getAvatarURL(ctx.Event.UserID), getSenderNickname(ctx), "", nil, "", nil)
 		})
 
 	en.OnMessage(func(ctx *zero.Ctx) bool {
@@ -229,6 +229,8 @@ func registerCommands() {
 			atUsers := extractAtUsers(ctx)
 			imgURLs := extractImageURLs(ctx)
 
+			replyText, replyImages := getReplyContent(ctx)
+
 			var avatarURL string
 			var nickname string
 
@@ -243,7 +245,7 @@ func registerCommands() {
 				nickname = getSenderNickname(ctx)
 			}
 
-			handleMemeGeneration(ctx, info, avatarURL, nickname, textPart, imgURLs)
+			handleMemeGeneration(ctx, info, avatarURL, nickname, textPart, imgURLs, replyText, replyImages)
 		})
 }
 
@@ -337,6 +339,48 @@ func extractImageURLs(ctx *zero.Ctx) []string {
 	return urls
 }
 
+func extractReplyID(ctx *zero.Ctx) int64 {
+	for _, seg := range ctx.Event.Message {
+		if seg.Type == "reply" {
+			if id, ok := seg.Data["id"]; ok {
+				replyID, err := strconv.ParseInt(id, 10, 64)
+				if err == nil {
+					return replyID
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func extractMessageContent(msg message.Message) (text string, imageURLs []string) {
+	imageURLs = make([]string, 0)
+	var sb strings.Builder
+	for _, seg := range msg {
+		if seg.Type == "text" {
+			sb.WriteString(seg.Data["text"])
+		} else if seg.Type == "image" {
+			if url := seg.Data["url"]; url != "" {
+				imageURLs = append(imageURLs, url)
+			}
+		}
+	}
+	return strings.TrimSpace(sb.String()), imageURLs
+}
+
+func getReplyContent(ctx *zero.Ctx) (replyText string, replyImages []string) {
+	replyID := extractReplyID(ctx)
+	if replyID == 0 {
+		return "", nil
+	}
+	replyMsg := ctx.GetMessage(replyID, true)
+	if len(replyMsg.Elements) == 0 {
+		return "", nil
+	}
+	text, images := extractMessageContent(replyMsg.Elements)
+	return text, images
+}
+
 func extractPlainText(ctx *zero.Ctx) string {
 	var sb strings.Builder
 	for _, seg := range ctx.Event.Message {
@@ -345,18 +389,6 @@ func extractPlainText(ctx *zero.Ctx) string {
 		}
 	}
 	return strings.TrimSpace(sb.String())
-}
-
-func extractReplyID(ctx *zero.Ctx) int64 {
-	for _, seg := range ctx.Event.Message {
-		if seg.Type == "reply" {
-			if id, ok := seg.Data["id"]; ok {
-				replyID, _ := strconv.ParseInt(id, 10, 64)
-				return replyID
-			}
-		}
-	}
-	return 0
 }
 
 func getAvatarURL(qq int64) string {
@@ -374,7 +406,7 @@ func getSenderNickname(ctx *zero.Ctx) string {
 	return name
 }
 
-func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string, nickname string, textPart string, imgURLs []string) {
+func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string, nickname string, textPart string, imgURLs []string, replyText string, replyImages []string) {
 	atUsers := extractAtUsers(ctx)
 	imageIDs := make([]MemeImage, 0)
 	allImgURLs := make([]string, 0)
@@ -389,6 +421,10 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 
 	if len(allImgURLs) == 0 {
 		allImgURLs = append(allImgURLs, defaultAvatarURL)
+	}
+
+	if len(allImgURLs) < info.Params.MinImages && len(replyImages) > 0 {
+		allImgURLs = append(allImgURLs, replyImages...)
 	}
 
 	if len(allImgURLs) < info.Params.MinImages {
@@ -459,6 +495,18 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 				texts = append(texts, nick)
 				if len(texts) >= info.Params.MinTexts {
 					break
+				}
+			}
+		}
+		if len(texts) < info.Params.MinTexts && replyText != "" {
+			replyParts := strings.SplitN(replyText, "/", info.Params.MaxTexts)
+			for _, p := range replyParts {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					texts = append(texts, p)
+					if len(texts) >= info.Params.MinTexts {
+						break
+					}
 				}
 			}
 		}
