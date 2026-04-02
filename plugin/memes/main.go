@@ -258,18 +258,23 @@ func findMatchingMeme(msg string) *matchedMeme {
 
 	for keyword, memeKey := range keyMap {
 		if strings.HasPrefix(msg, keyword) {
-			mInfo := infos[memeKey]
-			if mInfo == nil {
-				continue
-			}
-			textPart := strings.TrimPrefix(msg, keyword)
-			textPart = strings.TrimSpace(textPart)
+			remainder := msg[len(keyword):]
 
-			if longest == nil || len(keyword) > len(longest.keyword) {
-				longest = &matchedMeme{
-					info:     mInfo,
-					keyword:  keyword,
-					textPart: textPart,
+			if remainder == "" || strings.HasPrefix(remainder, " ") ||
+				strings.HasPrefix(remainder, "@") || strings.HasPrefix(remainder, "[CQ:") {
+
+				mInfo := infos[memeKey]
+				if mInfo == nil {
+					continue
+				}
+				textPart := strings.TrimSpace(remainder)
+
+				if longest == nil || len(keyword) > len(longest.keyword) {
+					longest = &matchedMeme{
+						info:     mInfo,
+						keyword:  keyword,
+						textPart: textPart,
+					}
 				}
 			}
 		}
@@ -406,8 +411,12 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 
 	if info.Params.MaxImages > 0 {
 		if len(allImgURLs) < info.Params.MinImages {
-			ctx.SendChain(message.Text(fmt.Sprintf("图片数量不符，需要 %d ~ %d 张图片",
-				info.Params.MinImages, info.Params.MaxImages)))
+			if info.Params.MinImages == info.Params.MaxImages {
+				ctx.SendChain(message.Text(fmt.Sprintf("图片数量不符，需要 %d 张图片", info.Params.MinImages)))
+			} else {
+				ctx.SendChain(message.Text(fmt.Sprintf("图片数量不符，需要 %d ~ %d 张图片",
+					info.Params.MinImages, info.Params.MaxImages)))
+			}
 			return
 		}
 
