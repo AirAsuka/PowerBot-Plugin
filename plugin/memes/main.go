@@ -57,6 +57,14 @@ func init() {
 
 	registerCommands()
 	go loadMemeData()
+
+	en.OnFullMatch("memes测试").SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		mu.RLock()
+		kmLen := len(keyMap)
+		infosLen := len(infos)
+		mu.RUnlock()
+		ctx.SendChain(message.Text(fmt.Sprintf("memes插件已加载！keyMap=%d, infos=%d", kmLen, infosLen)))
+	})
 }
 
 func registerCommands() {
@@ -248,44 +256,26 @@ type matchedMeme struct {
 func findMatchingMeme(msg string) *matchedMeme {
 	var longest *matchedMeme
 
-	for key, mInfo := range infos {
-		if strings.HasPrefix(msg, key) {
-			textPart := strings.TrimPrefix(msg, key)
+	for keyword, memeKey := range keyMap {
+		if strings.HasPrefix(msg, keyword) {
+			mInfo := infos[memeKey]
+			if mInfo == nil {
+				continue
+			}
+			textPart := strings.TrimPrefix(msg, keyword)
 			textPart = strings.TrimSpace(textPart)
 
-			if isValidMatch(textPart, mInfo) {
-				if longest == nil || len(key) > len(longest.keyword) {
-					longest = &matchedMeme{
-						info:     mInfo,
-						keyword:  key,
-						textPart: textPart,
-					}
+			if longest == nil || len(keyword) > len(longest.keyword) {
+				longest = &matchedMeme{
+					info:     mInfo,
+					keyword:  keyword,
+					textPart: textPart,
 				}
 			}
 		}
 	}
 
 	return longest
-}
-
-func isValidMatch(textPart string, info *MemeInfo) bool {
-	if textPart == "" {
-		return true
-	}
-
-	if strings.HasPrefix(textPart, "@") {
-		return true
-	}
-
-	if strings.Contains(textPart, "[CQ:image") {
-		return true
-	}
-
-	if info.Params.MinTexts > 0 || info.Params.MaxTexts > 0 {
-		return true
-	}
-
-	return false
 }
 
 func ensureDataLoaded() {
