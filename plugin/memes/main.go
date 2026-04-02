@@ -230,7 +230,6 @@ func registerCommands() {
 			imgURLs := extractImageURLs(ctx)
 
 			replyText, replyImages := getReplyContent(ctx)
-			fmt.Printf("[memes] debug: replyText=%q, replyImages=%v, imgURLs=%v\n", replyText, replyImages, imgURLs)
 
 			var avatarURL string
 			var nickname string
@@ -420,12 +419,12 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 		}
 	}
 
-	if len(allImgURLs) == 0 {
-		allImgURLs = append(allImgURLs, defaultAvatarURL)
-	}
-
 	if len(allImgURLs) < info.Params.MinImages && len(replyImages) > 0 {
 		allImgURLs = append(allImgURLs, replyImages...)
+	}
+
+	if len(allImgURLs) < info.Params.MinImages {
+		allImgURLs = append(allImgURLs, defaultAvatarURL)
 	}
 
 	if len(allImgURLs) < info.Params.MinImages {
