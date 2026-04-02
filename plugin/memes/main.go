@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,11 +29,12 @@ const (
 var (
 	en *control.Engine
 
-	keyMap  = make(map[string]string)
-	infos   = make(map[string]*MemeInfo)
-	dataDir string
-	mu      sync.RWMutex
-	loaded  bool
+	keyMap     = make(map[string]string)
+	patternMap = make(map[*regexp.Regexp]string)
+	infos      = make(map[string]*MemeInfo)
+	dataDir    string
+	mu         sync.RWMutex
+	loaded     bool
 )
 
 func init() {
@@ -190,31 +192,26 @@ func registerCommands() {
 			return false
 		}
 		ensureDataLoaded()
+
 		mu.RLock()
-		target := findLongestMatchingKey(msg, keyMap)
+		matched := findMatchingMeme(msg)
 		mu.RUnlock()
-		if target == "" {
+
+		if matched == nil {
 			return false
 		}
-		ctx.State["meme_keyword"] = target
+
+		ctx.State["meme_info"] = matched.info
+		ctx.State["meme_keyword"] = matched.keyword
 		ctx.State["meme_msg"] = msg
+		ctx.State["meme_text_part"] = matched.textPart
 		return true
 	}).SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			target := ctx.State["meme_keyword"].(string)
-			msg := ctx.State["meme_msg"].(string)
-
-			mu.RLock()
-			key := keyMap[target]
-			info := infos[key]
-			mu.RUnlock()
-
-			if info == nil {
-				return
-			}
-
-			textPart := strings.TrimPrefix(msg, target)
-			textPart = strings.TrimSpace(textPart)
+			info := ctx.State["meme_info"].(*MemeInfo)
+			_ = ctx.State["meme_keyword"].(string)
+			_ = ctx.State["meme_msg"].(string)
+			textPart := ctx.State["meme_text_part"].(string)
 
 			if textPart == "详情" || textPart == "帮助" {
 				ctx.SendChain(message.Text(formatMemeDetail(info)))
@@ -240,6 +237,55 @@ func registerCommands() {
 
 			handleMemeGeneration(ctx, info, avatarURL, nickname, textPart, imgURLs)
 		})
+}
+
+type matchedMeme struct {
+	info     *MemeInfo
+	keyword  string
+	textPart string
+}
+
+func findMatchingMeme(msg string) *matchedMeme {
+	var longest *matchedMeme
+
+	for key, mInfo := range infos {
+		if strings.HasPrefix(msg, key) {
+			textPart := strings.TrimPrefix(msg, key)
+			textPart = strings.TrimSpace(textPart)
+
+			if isValidMatch(textPart, mInfo) {
+				if longest == nil || len(key) > len(longest.keyword) {
+					longest = &matchedMeme{
+						info:     mInfo,
+						keyword:  key,
+						textPart: textPart,
+					}
+				}
+			}
+		}
+	}
+
+	return longest
+}
+
+func isValidMatch(textPart string, info *MemeInfo) bool {
+	if textPart == "" {
+		return true
+	}
+
+	if strings.HasPrefix(textPart, "@") {
+		return true
+	}
+
+	if strings.Contains(textPart, "[CQ:image") {
+		return true
+	}
+
+	if info.Params.MinTexts > 0 || info.Params.MaxTexts > 0 {
+		return true
+	}
+
+	return false
 }
 
 func ensureDataLoaded() {
@@ -306,6 +352,18 @@ func extractPlainText(ctx *zero.Ctx) string {
 	return strings.TrimSpace(sb.String())
 }
 
+func extractReplyID(ctx *zero.Ctx) int64 {
+	for _, seg := range ctx.Event.Message {
+		if seg.Type == "reply" {
+			if id, ok := seg.Data["id"]; ok {
+				replyID, _ := strconv.ParseInt(id, 10, 64)
+				return replyID
+			}
+		}
+	}
+	return 0
+}
+
 func getAvatarURL(qq int64) string {
 	return fmt.Sprintf("https://q4.qlogo.cn/g?b=qq&nk=%d&s=640", qq)
 }
@@ -321,51 +379,46 @@ func getSenderNickname(ctx *zero.Ctx) string {
 	return name
 }
 
-func findLongestMatchingKey(msg string, km map[string]string) string {
-	var longest string
-	for k := range km {
-		if strings.HasPrefix(msg, k) && len(k) > len(longest) {
-			longest = k
-		}
-	}
-	return longest
-}
-
 func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string, nickname string, textPart string, imgURLs []string) {
 	atUsers := extractAtUsers(ctx)
 	imageIDs := make([]MemeImage, 0)
+	allImgURLs := make([]string, 0)
+
+	if len(imgURLs) > 0 {
+		allImgURLs = append(allImgURLs, imgURLs...)
+	} else if len(atUsers) > 0 {
+		for _, u := range atUsers {
+			allImgURLs = append(allImgURLs, getAvatarURL(u.QQ))
+		}
+	}
+
+	if len(allImgURLs) == 0 {
+		allImgURLs = append(allImgURLs, defaultAvatarURL)
+	}
+
+	if len(allImgURLs) < info.Params.MinImages {
+		senderURL := getAvatarURL(ctx.Event.UserID)
+		hasSender := false
+		for _, u := range allImgURLs {
+			if u == senderURL {
+				hasSender = true
+				break
+			}
+		}
+		if !hasSender {
+			allImgURLs = append(allImgURLs, senderURL)
+		}
+	}
+
+	if len(allImgURLs) > info.Params.MaxImages {
+		allImgURLs = allImgURLs[:info.Params.MaxImages]
+	}
 
 	if info.Params.MaxImages > 0 {
-		allImgURLs := make([]string, 0)
-
-		if len(imgURLs) > 0 {
-			allImgURLs = append(allImgURLs, imgURLs...)
-		} else if len(atUsers) > 0 {
-			for _, u := range atUsers {
-				allImgURLs = append(allImgURLs, getAvatarURL(u.QQ))
-			}
-		}
-
-		if len(allImgURLs) == 0 {
-			allImgURLs = append(allImgURLs, defaultAvatarURL)
-		}
-
 		if len(allImgURLs) < info.Params.MinImages {
-			senderURL := getAvatarURL(ctx.Event.UserID)
-			hasSender := false
-			for _, u := range allImgURLs {
-				if u == senderURL {
-					hasSender = true
-					break
-				}
-			}
-			if !hasSender {
-				allImgURLs = append(allImgURLs, senderURL)
-			}
-		}
-
-		if len(allImgURLs) > info.Params.MaxImages {
-			allImgURLs = allImgURLs[:info.Params.MaxImages]
+			ctx.SendChain(message.Text(fmt.Sprintf("图片数量不符，需要 %d ~ %d 张图片",
+				info.Params.MinImages, info.Params.MaxImages)))
+			return
 		}
 
 		for _, imgURL := range allImgURLs {
@@ -415,8 +468,13 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 		}
 	}
 
-	if len(texts) < info.Params.MinTexts {
-		ctx.SendChain(message.Text(fmt.Sprintf("需要至少%d段文字，请用/分隔！", info.Params.MinTexts)))
+	if info.Params.MinTexts > 0 && len(texts) < info.Params.MinTexts {
+		if info.Params.MaxTexts == info.Params.MinTexts {
+			ctx.SendChain(message.Text(fmt.Sprintf("需要 %d 段文字，请用 / 分隔！", info.Params.MinTexts)))
+		} else {
+			ctx.SendChain(message.Text(fmt.Sprintf("需要 %d ~ %d 段文字，请用 / 分隔！",
+				info.Params.MinTexts, info.Params.MaxTexts)))
+		}
 		return
 	}
 
@@ -426,7 +484,11 @@ func handleMemeGeneration(ctx *zero.Ctx, info *MemeInfo, defaultAvatarURL string
 
 	data, err := generateMeme(info.Key, imageIDs, texts, nil)
 	if err != nil {
-		ctx.SendChain(message.Text("ERROR: 生成表情失败: ", err))
+		if apiErr, ok := err.(*MemeAPIError); ok {
+			ctx.SendChain(message.Text(apiErr.UserMessage()))
+		} else {
+			ctx.SendChain(message.Text("ERROR: 生成表情失败: ", err))
+		}
 		return
 	}
 
@@ -476,6 +538,7 @@ func loadMemeData() error {
 					keyMap = localKeyMap
 					loaded = true
 					mu.Unlock()
+					compilePatterns()
 					return nil
 				}
 			}
@@ -506,7 +569,19 @@ func loadMemeData() error {
 	_ = os.WriteFile(infosPath, mustJSON(newInfos), 0644)
 	_ = os.WriteFile(keymapPath, mustJSON(newKeyMap), 0644)
 
+	compilePatterns()
 	return nil
+}
+
+func compilePatterns() {
+	patternMap = make(map[*regexp.Regexp]string)
+	for key, info := range infos {
+		for _, pattern := range info.Patterns {
+			if re, err := regexp.Compile(pattern); err == nil {
+				patternMap[re] = key
+			}
+		}
+	}
 }
 
 func mustJSON(v interface{}) []byte {
