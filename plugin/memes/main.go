@@ -230,6 +230,7 @@ func registerCommands() {
 			imgURLs := extractImageURLs(ctx)
 
 			replyText, replyImages := getReplyContent(ctx)
+			fmt.Printf("[memes] debug: replyText=%q, replyImages=%v, imgURLs=%v\n", replyText, replyImages, imgURLs)
 
 			var avatarURL string
 			var nickname string
