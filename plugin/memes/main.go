@@ -258,6 +258,54 @@ type matchedMeme struct {
 func findMatchingMeme(msg string) *matchedMeme {
 	var longest *matchedMeme
 
+	for _, memeKey := range keyMap {
+		mInfo := infos[memeKey]
+		if mInfo == nil {
+			continue
+		}
+
+		for _, sc := range mInfo.Shortcuts {
+			re, err := regexp.Compile(sc.Pattern)
+			if err != nil {
+				continue
+			}
+
+			if re.MatchString(msg) {
+				matches := re.FindStringSubmatch(msg)
+				if len(matches) == 0 {
+					continue
+				}
+
+				names := re.SubexpNames()
+				args := make(map[string]string)
+				for i, name := range names {
+					if i > 0 && i <= len(matches) && name != "" {
+						args[name] = matches[i]
+					}
+				}
+
+				var shortcutTexts []string
+				for _, t := range sc.Texts {
+					result := t
+					for k, v := range args {
+						result = strings.ReplaceAll(result, "{"+k+"}", v)
+					}
+					shortcutTexts = append(shortcutTexts, result)
+				}
+
+				textPart := strings.Join(shortcutTexts, "/")
+
+				if longest == nil || len(sc.Pattern) > len(longest.keyword) {
+					longest = &matchedMeme{
+						info:     mInfo,
+						keyword:  sc.Pattern,
+						textPart: textPart,
+					}
+				}
+			}
+		}
+	}
+
 	for keyword, memeKey := range keyMap {
 		if strings.HasPrefix(msg, keyword) {
 			remainder := msg[len(keyword):]

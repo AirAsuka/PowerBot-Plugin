@@ -6,8 +6,17 @@ type MemeInfo struct {
 	Patterns     []string   `json:"patterns"`
 	Tags         []string   `json:"tags"`
 	Params       MemeParams `json:"params"`
+	Shortcuts    []Shortcut `json:"shortcuts,omitempty"`
 	DateCreated  string     `json:"date_created"`
 	DateModified string     `json:"date_modified"`
+}
+
+type Shortcut struct {
+	Pattern   string         `json:"pattern"`
+	Humanized *string        `json:"humanized,omitempty"`
+	Names     []string       `json:"names,omitempty"`
+	Texts     []string       `json:"texts,omitempty"`
+	Options   map[string]any `json:"options,omitempty"`
 }
 
 type MemeParams struct {
