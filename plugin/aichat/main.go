@@ -85,6 +85,7 @@ func init() {
 
 		// 群聊
 		if isReallyToMe {
+			logrus.Infoln("[aichat] @消息检测: isReallyToMe=", isReallyToMe, "NoReplyAt=", stor.NoReplyAt())
 			// 真正@了机器人：检查 NoReplyAt 配置
 			if stor.NoReplyAt() {
 				return false
