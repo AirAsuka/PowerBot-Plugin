@@ -58,16 +58,28 @@ func init() {
 			logrus.Infoln("[aichat] skip agent for ctx has not been hooked by agent")
 			return false
 		}
-		if !(ctx.ExtractPlainText() != "" &&
-			(!stor.NoReplyAt() || (stor.NoReplyAt() && !ctx.Event.IsToMe))) {
+		if ctx.ExtractPlainText() == "" {
 			return false
 		}
-		rate := stor.Rate()
-		if !ctx.Event.IsToMe && rand.Intn(100) >= int(rate) {
-			return false
-		}
-		if ctx.Event.IsToMe {
+		gid := ctx.Event.GroupID
+		isPrivate := gid == 0
+
+		if isPrivate {
 			ctx.Block()
+			return true
+		}
+
+		if ctx.Event.IsToMe {
+			if stor.NoRecord() {
+				return false
+			}
+			ctx.Block()
+			return true
+		}
+
+		rate := stor.Rate()
+		if rate == 0 || rand.Intn(100) >= int(rate) {
+			return false
 		}
 		return true
 	}).SetBlock(false).Handle(func(ctx *zero.Ctx) {
