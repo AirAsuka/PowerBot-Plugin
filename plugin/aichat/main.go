@@ -48,6 +48,7 @@ var (
 
 func init() {
 	en.OnMessage(chat.EnsureConfig, func(ctx *zero.Ctx) bool {
+		logrus.Infoln("[aichat] OnMessage triggered")
 		stor, ok := ctx.State[zero.StateKeyPrefixKeep+"aichatcfg_stor__"].(chat.Storage)
 		if !ok {
 			logrus.Warnln("ERROR: cannot get stor")
@@ -63,7 +64,7 @@ func init() {
 			return false
 		}
 		rate := stor.Rate()
-		logrus.Debugln("[aichat] precheck: IsToMe=", ctx.Event.IsToMe, "rate=", rate, "NoReplyAt=", stor.NoReplyAt())
+		logrus.Infoln("[aichat] precheck: IsToMe=", ctx.Event.IsToMe, "rate=", rate, "NoReplyAt=", stor.NoReplyAt())
 		if !ctx.Event.IsToMe && rand.Intn(100) >= int(rate) {
 			return false
 		}
