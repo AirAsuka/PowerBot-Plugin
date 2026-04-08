@@ -3,8 +3,8 @@ package aichat
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
-	"strconv"
 	"strings"
 
 	"github.com/RomiChan/syncx"
@@ -66,17 +66,15 @@ func init() {
 		gid := ctx.Event.GroupID
 		isPrivate := gid == 0
 
-		// 检查消息中是否真的@了机器人（遍历消息段，防止IsToMe误判）
+		// 检查消息中是否真的@了机器人（通过原始消息判断）
+		// ZeroBot 会将 [CQ:at,qq=xxx] 格式的@转换为 IsToMe=true，但需要防止误判
 		isReallyToMe := false
-		for _, seg := range ctx.Event.Message {
-			logrus.Infoln("[aichat] 消息段: type=", seg.Type, "data=", seg.Data)
-			if seg.Type == "at" {
-				qq := seg.Data["qq"]
-				logrus.Infoln("[aichat] @段检测: qq=", qq, "selfID=", ctx.Event.SelfID)
-				if atQQ, err := strconv.ParseInt(qq, 10, 64); err == nil && atQQ == ctx.Event.SelfID {
-					isReallyToMe = true
-					break
-				}
+		if ctx.Event.IsToMe {
+			// 检查原始消息是否包含 [CQ:at,qq=机器人QQ]
+			rawMsg := ctx.Event.RawMessage
+			logrus.Infoln("[aichat] @检测: RawMessage=", rawMsg, "selfID=", ctx.Event.SelfID)
+			if strings.Contains(rawMsg, "[CQ:at,qq="+fmt.Sprint(ctx.Event.SelfID)) {
+				isReallyToMe = true
 			}
 		}
 		logrus.Infoln("[aichat] @消息检测: isReallyToMe=", isReallyToMe, "NoReplyAt=", stor.NoReplyAt())
