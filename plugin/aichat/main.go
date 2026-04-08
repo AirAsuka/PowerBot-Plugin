@@ -70,7 +70,7 @@ func init() {
 		}
 
 		if ctx.Event.IsToMe {
-			if stor.NoRecord() {
+			if stor.NoReplyAt() || stor.NoRecord() {
 				return false
 			}
 			ctx.Block()
