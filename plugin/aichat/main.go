@@ -69,6 +69,7 @@ func init() {
 		// 检查消息中是否真的@了机器人（遍历消息段，防止IsToMe误判）
 		isReallyToMe := false
 		for _, seg := range ctx.Event.Message {
+			logrus.Infoln("[aichat] 消息段: type=", seg.Type, "data=", seg.Data)
 			if seg.Type == "at" {
 				qq := seg.Data["qq"]
 				logrus.Infoln("[aichat] @段检测: qq=", qq, "selfID=", ctx.Event.SelfID)
