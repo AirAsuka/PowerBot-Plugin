@@ -3,7 +3,9 @@ package aichat
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 
 	"github.com/RomiChan/syncx"
@@ -48,7 +50,6 @@ var (
 
 func init() {
 	en.OnMessage(chat.EnsureConfig, func(ctx *zero.Ctx) bool {
-		logrus.Infoln("[aichat] OnMessage triggered")
 		stor, ok := ctx.State[zero.StateKeyPrefixKeep+"aichatcfg_stor__"].(chat.Storage)
 		if !ok {
 			logrus.Warnln("ERROR: cannot get stor")
@@ -59,17 +60,44 @@ func init() {
 			logrus.Infoln("[aichat] skip agent for ctx has not been hooked by agent")
 			return false
 		}
-		if !(ctx.ExtractPlainText() != "" &&
-			(!stor.NoReplyAt() || (stor.NoReplyAt() && !ctx.Event.IsToMe))) {
+		plainText := ctx.ExtractPlainText()
+		if plainText == "" {
 			return false
 		}
-		rate := stor.Rate()
-		logrus.Infoln("[aichat] precheck: IsToMe=", ctx.Event.IsToMe, "rate=", rate, "NoReplyAt=", stor.NoReplyAt())
-		if !ctx.Event.IsToMe && rand.Intn(100) >= int(rate) {
-			return false
+		gid := ctx.Event.GroupID
+		isPrivate := gid == 0
+
+		// 检查消息中是否真的@了机器人（遍历消息段，防止IsToMe误判）
+		isReallyToMe := false
+		for _, seg := range ctx.Event.Message {
+			if seg.Type == "at" {
+				if qq, err := strconv.ParseInt(seg.Data["qq"], 10, 64); err == nil && qq == ctx.Event.SelfID {
+					isReallyToMe = true
+					break
+				}
+			}
 		}
-		if ctx.Event.IsToMe {
+
+		if isPrivate {
+			// 私聊：每条都响应
 			ctx.Block()
+			return true
+		}
+
+		// 群聊
+		if isReallyToMe {
+			// 真正@了机器人：检查 NoReplyAt 配置
+			if stor.NoReplyAt() {
+				return false
+			}
+			ctx.Block()
+			return true
+		}
+
+		// 普通消息：检查概率
+		rate := stor.Rate()
+		if rate == 0 || rand.Intn(100) >= int(rate) {
+			return false
 		}
 		return true
 	}).SetBlock(false).Handle(func(ctx *zero.Ctx) {
