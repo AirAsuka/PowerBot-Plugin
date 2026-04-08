@@ -70,12 +70,11 @@ func init() {
 		isReallyToMe := false
 		for _, seg := range ctx.Event.Message {
 			if seg.Type == "at" {
-				if qq, ok := seg.Data["qq"].(string); ok {
-					logrus.Infoln("[aichat] @段检测: qq=", qq, "selfID=", ctx.Event.SelfID)
-					if atQQ, err := strconv.ParseInt(qq, 10, 64); err == nil && atQQ == ctx.Event.SelfID {
-						isReallyToMe = true
-						break
-					}
+				qq := seg.Data["qq"]
+				logrus.Infoln("[aichat] @段检测: qq=", qq, "selfID=", ctx.Event.SelfID)
+				if atQQ, err := strconv.ParseInt(qq, 10, 64); err == nil && atQQ == ctx.Event.SelfID {
+					isReallyToMe = true
+					break
 				}
 			}
 		}
