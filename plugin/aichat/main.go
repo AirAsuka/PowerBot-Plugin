@@ -70,12 +70,15 @@ func init() {
 		isReallyToMe := false
 		for _, seg := range ctx.Event.Message {
 			if seg.Type == "at" {
-				if qq, err := strconv.ParseInt(seg.Data["qq"], 10, 64); err == nil && qq == ctx.Event.SelfID {
+				qqStr, _ := seg.Data["qq"]
+				logrus.Infoln("[aichat] @段检测: qq=", qqStr, "selfID=", ctx.Event.SelfID)
+				if qq, err := strconv.ParseInt(qqStr, 10, 64); err == nil && qq == ctx.Event.SelfID {
 					isReallyToMe = true
 					break
 				}
 			}
 		}
+		logrus.Infoln("[aichat] @消息检测: isReallyToMe=", isReallyToMe, "NoReplyAt=", stor.NoReplyAt())
 
 		if isPrivate {
 			// 私聊：每条都响应
@@ -85,7 +88,6 @@ func init() {
 
 		// 群聊
 		if isReallyToMe {
-			logrus.Infoln("[aichat] @消息检测: isReallyToMe=", isReallyToMe, "NoReplyAt=", stor.NoReplyAt())
 			// 真正@了机器人：检查 NoReplyAt 配置
 			if stor.NoReplyAt() {
 				return false
