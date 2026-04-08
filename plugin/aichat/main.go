@@ -3,7 +3,6 @@ package aichat
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/rand"
 	"strconv"
 	"strings"
