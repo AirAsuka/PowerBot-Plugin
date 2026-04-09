@@ -140,12 +140,15 @@ func init() {
 
 			// 解析API响应
 			jsonData := gjson.ParseBytes(data)
-			images := jsonData.Get("images")
-			if !images.Exists() {
-				images = jsonData.Get("data")
-				if !images.Exists() {
-					ctx.SendChain(message.Text("未获取到图片URL"))
-					return
+			imageURLs := jsonData.Get("data.image_urls")
+			if !imageURLs.Exists() {
+				imageURLs = jsonData.Get("images.0.url")
+				if !imageURLs.Exists() {
+					imageURLs = jsonData.Get("data.0.url")
+					if !imageURLs.Exists() {
+						ctx.SendChain(message.Text("未获取到图片URL"))
+						return
+					}
 				}
 			}
 
@@ -160,8 +163,8 @@ func init() {
 				"种子: ", seed)))
 
 			// 添加所有图片
-			images.ForEach(func(_, value gjson.Result) bool {
-				url := value.Get("url").String()
+			imageURLs.ForEach(func(_, value gjson.Result) bool {
+				url := value.String()
 				if url != "" {
 					msg = append(msg, ctxext.FakeSenderForwardNode(ctx, message.Image(url)))
 				}
