@@ -109,15 +109,39 @@ func init() {
 				return
 			}
 
+			// 提取消息中的图片作为参考图
+			var imageURLs []string
+			for _, seg := range ctx.Event.Message {
+				if seg.Type == "image" {
+					if url := seg.Data["url"]; url != "" {
+						imageURLs = append(imageURLs, url)
+					}
+				}
+			}
+
 			// 准备请求数据
-			reqBytes, _ := json.Marshal(map[string]interface{}{
+			reqData := map[string]interface{}{
 				"model":               cfg.ModelName,
 				"prompt":              prompt,
 				"image_size":          "1024x1024",
 				"batch_size":          4,
 				"num_inference_steps": 20,
 				"guidance_scale":      7.5,
-			})
+			}
+
+			// 如果有参考图片，添加 subject_reference
+			if len(imageURLs) > 0 {
+				subjectRef := make([]map[string]interface{}, 0, len(imageURLs))
+				for _, url := range imageURLs {
+					subjectRef = append(subjectRef, map[string]interface{}{
+						"type":        "character",
+						"image_file": url,
+					})
+				}
+				reqData["subject_reference"] = subjectRef
+			}
+
+			reqBytes, _ := json.Marshal(reqData)
 
 			// 发送API请求
 			data, err := web.RequestDataWithHeaders(
@@ -140,12 +164,12 @@ func init() {
 
 			// 解析API响应
 			jsonData := gjson.ParseBytes(data)
-			imageURLs := jsonData.Get("data.image_urls")
-			if !imageURLs.Exists() {
-				imageURLs = jsonData.Get("images.0.url")
-				if !imageURLs.Exists() {
-					imageURLs = jsonData.Get("data.0.url")
-					if !imageURLs.Exists() {
+			resultImages := jsonData.Get("data.image_urls")
+			if !resultImages.Exists() {
+				resultImages = jsonData.Get("images.0.url")
+				if !resultImages.Exists() {
+					resultImages = jsonData.Get("data.0.url")
+					if !resultImages.Exists() {
 						ctx.SendChain(message.Text("未获取到图片URL"))
 						return
 					}
@@ -163,7 +187,7 @@ func init() {
 				"种子: ", seed)))
 
 			// 添加所有图片
-			imageURLs.ForEach(func(_, value gjson.Result) bool {
+			resultImages.ForEach(func(_, value gjson.Result) bool {
 				url := value.String()
 				if url != "" {
 					msg = append(msg, ctxext.FakeSenderForwardNode(ctx, message.Image(url)))
