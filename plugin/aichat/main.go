@@ -9,6 +9,7 @@ import (
 
 	"github.com/RomiChan/syncx"
 	"github.com/fumiama/deepinfra"
+	"github.com/fumiama/deepinfra/model"
 	goba "github.com/fumiama/go-onebot-agent"
 	"github.com/sirupsen/logrus"
 
@@ -183,7 +184,40 @@ func init() {
 			logrus.Warnln("ERROR: ", err)
 			return
 		}
-		data, err := x.Request(chat.GetChatContext(mod, gid, chat.AC.SystemP, bool(chat.AC.NoSystemP)))
+
+		// 提取消息中的图片URL
+		var imageURLs []string
+		for _, seg := range ctx.Event.Message {
+			if seg.Type == "image" {
+				if url := seg.Data["url"]; url != "" {
+					imageURLs = append(imageURLs, url)
+				}
+			}
+		}
+
+		var data string
+		if len(imageURLs) > 0 && chat.AC.ImageAPI != "" && chat.AC.ImageModelName != "" {
+			// 识图模式：发送图片+文本
+			logrus.Debugln("[aichat] 识图模式, 图片数量:", len(imageURLs))
+			imgAPI := deepinfra.NewAPI(chat.AC.ImageAPI, string(chat.AC.ImageKey))
+			imgMod, err := chat.AC.ImageType.Protocol(chat.AC.ImageModelName, temperature, topp, maxn)
+			if err != nil {
+				logrus.Warnln("ERROR: ", err)
+				return
+			}
+			contents := make([]model.Content, 0, len(imageURLs)+1)
+			for _, url := range imageURLs {
+				contents = append(contents, model.NewContentImageURL(url))
+			}
+			plainText := ctx.ExtractPlainText()
+			if plainText != "" {
+				contents = append(contents, model.NewContentText(plainText))
+			}
+			data, err = imgAPI.Request(imgMod.User(contents...))
+		} else {
+			// 普通文本聊天
+			data, err = x.Request(chat.GetChatContext(mod, gid, chat.AC.SystemP, bool(chat.AC.NoSystemP)))
+		}
 		if err != nil {
 			logrus.Warnln("[aichat] post err:", err)
 			return
