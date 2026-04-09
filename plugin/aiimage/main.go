@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	fcext "github.com/FloatTech/floatbox/ctxext"
 	"github.com/FloatTech/floatbox/web"
 	sql "github.com/FloatTech/sqlite"
@@ -133,6 +135,8 @@ func init() {
 				ctx.SendChain(message.Text("API请求失败: ", err))
 				return
 			}
+
+			logrus.Infoln("[aiimage] API返回:", string(data))
 
 			// 解析API响应
 			jsonData := gjson.ParseBytes(data)
