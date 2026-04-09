@@ -158,7 +158,7 @@ func init() {
 			msg := make(message.Message, 0, 1)
 			msg = append(msg, ctxext.FakeSenderForwardNode(ctx, message.Text("图片生成成功!\n",
 				"提示词: ", prompt, "\n",
-				"模型: ", cfg.ModelName, "\n",
+				// "模型: ", cfg.ModelName, "\n",
 				"推理时间: ", inferenceTime, "秒\n",
 				"种子: ", seed)))
 
