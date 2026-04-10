@@ -300,7 +300,7 @@ func init() {
 			if len(taskIDShorthand) > 8 {
 				taskIDShorthand = taskIDShorthand[:8]
 			}
-			ctx.SendChain(message.Text("任务创建成功，等待合成... (task_id:", taskIDShorthand, "...)"))
+			// ctx.SendChain(message.Text("任务创建成功，等待合成... (task_id:", taskIDShorthand, "...)"))
 			logrus.Infoln("[ttsvoice] taskID:", taskID)
 			var fileID string
 			for i := 0; i < 30; i++ { // 最多等待30秒
