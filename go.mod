@@ -11,7 +11,7 @@ require (
 	github.com/FloatTech/sqlite v1.7.2
 	github.com/FloatTech/ttl v0.0.0-20250224045156-012b1463287d
 	github.com/FloatTech/zbpctrl v1.7.1
-	github.com/AirAsuka/pbputils v1.7.2-0.20260314071304-549abb40dd64
+	github.com/FloatTech/zbputils v1.7.2-0.20260314071304-549abb40dd64
 	github.com/RomiChan/syncx v0.0.0-20240418144900-b7402ffdebc7
 	github.com/RomiChan/websocket v1.4.3-0.20251002072000-d3eb41798438
 	github.com/Tnze/go-mc v1.20.2
@@ -97,3 +97,5 @@ require (
 replace modernc.org/sqlite => github.com/fumiama/sqlite3 v1.29.10-simp
 
 replace modernc.org/libc => github.com/fumiama/libc v0.0.0-20240530081950-6f6d8586b5c5
+
+replace github.com/AirAsuka/pbputils => github.com/AirAsuka/pbputils v1.0.0-2604101700-2873014

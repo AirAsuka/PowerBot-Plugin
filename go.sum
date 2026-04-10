@@ -1,3 +1,5 @@
+github.com/AirAsuka/pbputils v1.7.2-0.20260314071304-549abb40dd64 h1:H54x4ckY5+tMg+wgofUOHLaqTf3ZKm/9XbVoG4ZHGPM=
+github.com/AirAsuka/pbputils v1.7.2-0.20260314071304-549abb40dd64/go.mod h1:Rz7nNTSu02OesJGUY2q8jymE9Wcrz26kXR+LTWFdaVY=
 github.com/FloatTech/AnimeAPI v1.7.1-0.20251028071248-0c948e3db65c h1:fmvlRUzwoK6KdoRSW+XeTQ9myKHimd0pV6GbmRJLNRo=
 github.com/FloatTech/AnimeAPI v1.7.1-0.20251028071248-0c948e3db65c/go.mod h1:cuDd67B23xmICSmFBhWzXN51blod2BlM1liN9Ux0pSc=
 github.com/FloatTech/floatbox v0.0.0-20251002074805-f95cbc7edb31 h1:2K+/M64ixD1Pg5hr00Nbxr7GoWQOgahvpmp1pAMnrYc=
@@ -14,8 +16,8 @@ github.com/FloatTech/ttl v0.0.0-20250224045156-012b1463287d h1:mUQ/c3wXKsUGa4Sg9
 github.com/FloatTech/ttl v0.0.0-20250224045156-012b1463287d/go.mod h1:fHZFWGquNXuHttu9dUYoKuNbm3dzLETnIOnm1muSfDs=
 github.com/FloatTech/zbpctrl v1.7.1 h1:0yPEmCForhyMbnhTckmjDUFFDZgQp1RjO2bVF4ZVqOs=
 github.com/FloatTech/zbpctrl v1.7.1/go.mod h1:xmM4dSwHA02Gei3ogCRiG+RTrw/7Z69PfrN5NYf8BPE=
-github.com/AirAsuka/pbputils v1.7.2-0.20260314071304-549abb40dd64 h1:H54x4ckY5+tMg+wgofUOHLaqTf3ZKm/9XbVoG4ZHGPM=
-github.com/AirAsuka/pbputils v1.7.2-0.20260314071304-549abb40dd64/go.mod h1:Rz7nNTSu02OesJGUY2q8jymE9Wcrz26kXR+LTWFdaVY=
+github.com/FloatTech/zbputils v1.7.2-0.20260314071304-549abb40dd64 h1:H54x4ckY5+tMg+wgofUOHLaqTf3ZKm/9XbVoG4ZHGPM=
+github.com/FloatTech/zbputils v1.7.2-0.20260314071304-549abb40dd64/go.mod h1:Rz7nNTSu02OesJGUY2q8jymE9Wcrz26kXR+LTWFdaVY=
 github.com/PuerkitoBio/goquery v1.5.1/go.mod h1:GsLWisAFVj4WgDibEWF4pvYnkVQBpKBKeU+7zCJoLcc=
 github.com/PuerkitoBio/goquery v1.8.0 h1:PJTF7AmFCFKk1N6V6jmKfrNH9tV5pNE6lZMkG0gta/U=
 github.com/PuerkitoBio/goquery v1.8.0/go.mod h1:ypIiRMtY7COPGk+I/YbZLbxsxn9g5ejnI2HSMtkjZvI=
