@@ -420,7 +420,11 @@ func (sdb *storage) queryTask(apiKey, apiURL, taskID string) (string, error) {
 
 	status := gjson.Get(respStr, "status").String()
 	if status == "Success" || status == "success" {
+		// file_id可能在顶层或data里
 		fileID := gjson.Get(respStr, "data.file_id").String()
+		if fileID == "" || fileID == "0" {
+			fileID = gjson.Get(respStr, "file_id").String()
+		}
 		logrus.Infoln("[ttsvoice] 任务完成, fileID:", fileID)
 		return fileID, nil
 	}
