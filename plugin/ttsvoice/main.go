@@ -373,17 +373,26 @@ func (sdb *storage) createTask(apiKey, apiURL, model, text, voiceID string, spee
 
 	respStr := string(resp)
 	logrus.Infoln("[ttsvoice] 原始响应:", respStr)
+
+	// 检查API错误
+	statusCode := gjson.Get(respStr, "base_resp.status_code").Int()
+	statusMsg := gjson.Get(respStr, "base_resp.status_msg").String()
+	if statusCode != 0 && statusMsg != "" {
+		return "", fmt.Errorf("API错误 %d: %s", statusCode, statusMsg)
+	}
+
+	// 解析task_id (可能是整数或字符串)
 	taskID := gjson.Get(respStr, "task_id").String()
-	if taskID == "" {
+	if taskID == "" || taskID == "0" {
 		// 尝试其他可能的字段
 		taskID = gjson.Get(respStr, "id").String()
-		if taskID == "" {
+		if taskID == "" || taskID == "0" {
 			taskID = gjson.Get(respStr, "data.task_id").String()
 		}
 	}
 	logrus.Infoln("[ttsvoice] 解析到的taskID:", taskID)
-	if taskID == "" {
-		return "", fmt.Errorf("未获取到task_id: %s", respStr)
+	if taskID == "" || taskID == "0" {
+		return "", fmt.Errorf("未获取到有效的task_id: %s", respStr)
 	}
 
 	return taskID, nil
