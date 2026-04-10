@@ -230,8 +230,8 @@ func init() {
 	// 用户命令：设置自己的音色
 	en.OnPrefix("我的音色", getdb).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
-			voiceID := strings.TrimSpace(ctx.State["args"].(string))
-			if voiceID == "" {
+			input := strings.TrimSpace(ctx.State["args"].(string))
+			if input == "" {
 				currentVoice := sdb.getUserVoice(ctx.Event.UserID)
 				if currentVoice == "" {
 					cfg := sdb.getConfig()
@@ -241,6 +241,14 @@ func init() {
 				}
 				return
 			}
+
+			// 解析输入：支持序号、名字、ID
+			voiceID, ok := ParseVoiceInput(input)
+			if !ok {
+				ctx.SendChain(message.Text("未找到匹配的音色，请输入序号(1-58)、名字或ID"))
+				return
+			}
+
 			err := sdb.setUserVoice(ctx.Event.UserID, voiceID)
 			if err != nil {
 				ctx.SendChain(message.Text("ERROR: ", err))

@@ -199,3 +199,35 @@ func PrintVoiceList() string {
 	}
 	return builder.String()
 }
+
+// ParseVoiceInput 解析用户输入，返回音色ID
+// 支持序号(1-58)、名字、ID
+func ParseVoiceInput(input string) (string, bool) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return "", false
+	}
+
+	// 尝试解析为序号
+	var idx int
+	_, err := fmt.Sscanf(input, "%d", &idx)
+	if err == nil && idx >= 1 && idx <= len(VoiceList) {
+		return VoiceList[idx-1].ID, true
+	}
+
+	// 尝试匹配ID
+	for _, v := range VoiceList {
+		if v.ID == input {
+			return v.ID, true
+		}
+	}
+
+	// 尝试匹配名字（模糊匹配）
+	for _, v := range VoiceList {
+		if strings.Contains(v.Name, input) {
+			return v.ID, true
+		}
+	}
+
+	return "", false
+}
