@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/FloatTech/zbputils/img/text"
 	sql "github.com/FloatTech/sqlite"
 )
 
@@ -193,11 +194,31 @@ func (sdb *storage) PrintConfig() string {
 // PrintVoiceList 返回音色列表
 func PrintVoiceList() string {
 	var builder strings.Builder
-	builder.WriteString("【音色列表】\n")
+	builder.WriteString("【音色列表】回复\"我的音色+序号\"即可设置\n")
 	for i, v := range VoiceList {
 		builder.WriteString(fmt.Sprintf("%d. %s - %s\n", i+1, v.ID, v.Name))
 	}
 	return builder.String()
+}
+
+// RenderVoiceListToBase64 将音色列表渲染为图片
+func RenderVoiceListToBase64() ([]byte, error) {
+	return renderVoiceListToBase64Impl()
+}
+
+// renderVoiceListToBase64Impl 渲染音色列表图片的实现
+func renderVoiceListToBase64Impl() ([]byte, error) {
+	var builder strings.Builder
+	builder.WriteString("【音色列表】\n")
+	builder.WriteString("发送\"我的音色+序号\"即可设置\n")
+	builder.WriteString("─────────────────────\n")
+	for i, v := range VoiceList {
+		builder.WriteString(fmt.Sprintf("%2d. %s\n", i+1, v.Name))
+	}
+	builder.WriteString("─────────────────────\n")
+	builder.WriteString(fmt.Sprintf("共 %d 个音色", len(VoiceList)))
+
+	return text.RenderToBase64(builder.String(), text.FontFile, 400, 25)
 }
 
 // ParseVoiceInput 解析用户输入，返回音色ID

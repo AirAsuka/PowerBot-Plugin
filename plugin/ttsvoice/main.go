@@ -15,6 +15,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"github.com/FloatTech/floatbox/binary"
 	fcext "github.com/FloatTech/floatbox/ctxext"
 	"github.com/FloatTech/floatbox/web"
 	sql "github.com/FloatTech/sqlite"
@@ -224,7 +225,12 @@ func init() {
 	// 查看音色列表
 	en.OnFullMatch("查看音色列表", getdb).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
-			ctx.SendChain(message.Text(PrintVoiceList()))
+			data, err := RenderVoiceListToBase64()
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR: ", err))
+				return
+			}
+			ctx.SendChain(message.Image("base64://" + binary.BytesToString(data)))
 		})
 
 	// 用户命令：设置自己的音色

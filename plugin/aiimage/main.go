@@ -160,7 +160,13 @@ func init() {
 				return
 			}
 
-			logrus.Infoln("[aiimage] API返回:", string(data))
+			dataStr := string(data)
+			logrus.Infoln("[aiimage] API返回长度:", len(dataStr))
+			if len(dataStr) > 500 {
+				logrus.Infoln("[aiimage] API返回前500字符:", dataStr[:500])
+			} else {
+				logrus.Infoln("[aiimage] API返回:", dataStr)
+			}
 
 			// 解析API响应
 			jsonData := gjson.ParseBytes(data)
@@ -176,6 +182,8 @@ func init() {
 				}
 			}
 
+			logrus.Infoln("[aiimage] 解析到的图片数量:", len(resultImages.Array()))
+
 			// 发送生成的图片和相关信息
 			inferenceTime := jsonData.Get("timings.inference").Float()
 			seed := jsonData.Get("seed").Int()
@@ -187,16 +195,29 @@ func init() {
 				"种子: ", seed)))
 
 			// 添加所有图片
+			imageCount := 0
 			resultImages.ForEach(func(_, value gjson.Result) bool {
 				url := value.String()
+				if len(url) > 100 {
+				logrus.Infoln("[aiimage] 图片URL前100字符:", url[:100])
+			} else {
+				logrus.Infoln("[aiimage] 图片URL:", url)
+			}
 				if url != "" {
 					msg = append(msg, ctxext.FakeSenderForwardNode(ctx, message.Image(url)))
+					imageCount++
 				}
 				return true
 			})
 
+			logrus.Infoln("[aiimage] 待发送消息数量:", len(msg), "图片数量:", imageCount)
+
 			if len(msg) > 0 {
+				logrus.Infoln("[aiimage] 开始发送消息...")
 				ctx.Send(msg)
+				logrus.Infoln("[aiimage] 消息发送完成")
+			} else {
+				ctx.SendChain(message.Text("未获取到有效图片"))
 			}
 		})
 }
