@@ -415,15 +415,18 @@ func (sdb *storage) queryTask(apiKey, apiURL, taskID string) (string, error) {
 		return "", err
 	}
 
-	logrus.Debugln("[ttsvoice] 查询任务返回:", string(resp))
+	respStr := string(resp)
+	logrus.Infoln("[ttsvoice] 查询任务返回:", respStr)
 
-	status := gjson.Get(string(resp), "status").String()
+	status := gjson.Get(respStr, "status").String()
 	if status == "Success" || status == "success" {
-		fileID := gjson.Get(string(resp), "data.file_id").String()
+		fileID := gjson.Get(respStr, "data.file_id").String()
+		logrus.Infoln("[ttsvoice] 任务完成, fileID:", fileID)
 		return fileID, nil
 	}
 
 	// 还在处理中
+	logrus.Infoln("[ttsvoice] 任务状态:", status)
 	return "", nil
 }
 
