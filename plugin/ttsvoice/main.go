@@ -291,7 +291,11 @@ func init() {
 			}
 
 			// 2. 轮询查询任务状态
-			ctx.SendChain(message.Text("任务创建成功，等待合成... (task_id:", taskID[:8], "...)"))
+			taskIDShorthand := taskID
+			if len(taskIDShorthand) > 8 {
+				taskIDShorthand = taskIDShorthand[:8]
+			}
+			ctx.SendChain(message.Text("任务创建成功，等待合成... (task_id:", taskIDShorthand, "...)"))
 			var fileID string
 			for i := 0; i < 30; i++ { // 最多等待30秒
 				time.Sleep(time.Second)
@@ -416,7 +420,11 @@ func (sdb *storage) downloadAudio(apiKey, apiURL, fileID string) (string, error)
 
 	// 保存到临时文件
 	tmpDir := os.TempDir()
-	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("tts_%s.mp3", fileID[:8]))
+	fileIDShorthand := fileID
+	if len(fileIDShorthand) > 8 {
+		fileIDShorthand = fileIDShorthand[:8]
+	}
+	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("tts_%s.mp3", fileIDShorthand))
 	err = os.WriteFile(tmpFile, resp, 0644)
 	if err != nil {
 		return "", err
