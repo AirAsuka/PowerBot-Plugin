@@ -78,7 +78,7 @@ func init() {
 				isReallyToMe = true
 			}
 		}
-		logrus.Infoln("[aichat] @消息检测: isReallyToMe=", isReallyToMe, "NoReplyAt=", stor.NoReplyAt())
+		// logrus.Infoln("[aichat] @消息检测: isReallyToMe=", isReallyToMe, "NoReplyAt=", stor.NoReplyAt())
 
 		if isPrivate {
 			// 私聊：每条都响应

@@ -296,10 +296,12 @@ func init() {
 				taskIDShorthand = taskIDShorthand[:8]
 			}
 			ctx.SendChain(message.Text("任务创建成功，等待合成... (task_id:", taskIDShorthand, "...)"))
+			logrus.Infoln("[ttsvoice] taskID:", taskID)
 			var fileID string
 			for i := 0; i < 30; i++ { // 最多等待30秒
 				time.Sleep(time.Second)
 				fileID, err = sdb.queryTask(cfg.APIKey, cfg.APIURL, taskID)
+				logrus.Infoln("[ttsvoice] 第", i+1, "次查询, fileID:", fileID, "err:", err)
 				if err != nil {
 					logrus.Warnln("[ttsvoice] 查询任务失败: ", err)
 					continue
