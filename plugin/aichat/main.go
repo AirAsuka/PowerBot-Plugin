@@ -73,7 +73,7 @@ func init() {
 		if ctx.Event.IsToMe {
 			// 检查原始消息是否包含 [CQ:at,qq=机器人QQ]
 			rawMsg := ctx.Event.RawMessage
-			logrus.Infoln("[aichat] @检测: RawMessage=", rawMsg, "selfID=", ctx.Event.SelfID)
+			// logrus.Infoln("[aichat] @检测: RawMessage=", rawMsg, "selfID=", ctx.Event.SelfID)
 			if strings.Contains(rawMsg, "[CQ:at,qq="+fmt.Sprint(ctx.Event.SelfID)) {
 				isReallyToMe = true
 			}

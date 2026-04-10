@@ -285,8 +285,13 @@ func init() {
 
 			// 1. 创建语音合成任务
 			taskID, err := sdb.createTask(cfg.APIKey, cfg.APIURL, cfg.ModelName, text, voiceID, cfg.Speed, cfg.Volume, cfg.Pitch)
+			logrus.Infoln("[ttsvoice] createTask返回: taskID=", taskID, "err=", err)
 			if err != nil {
 				ctx.SendChain(message.Text("创建任务失败: ", err))
+				return
+			}
+			if taskID == "" {
+				ctx.SendChain(message.Text("创建任务返回为空"))
 				return
 			}
 
