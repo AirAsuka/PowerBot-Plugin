@@ -98,4 +98,4 @@ replace modernc.org/sqlite => github.com/fumiama/sqlite3 v1.29.10-simp
 
 replace modernc.org/libc => github.com/fumiama/libc v0.0.0-20240530081950-6f6d8586b5c5
 
-replace github.com/AirAsuka/pbputils => github.com/AirAsuka/pbputils v1.0.1-2604101706-79fb8b3
+replace github.com/AirAsuka/pbputils => github.com/AirAsuka/pbputils v1.0.2-2604101729-79fb8b3
