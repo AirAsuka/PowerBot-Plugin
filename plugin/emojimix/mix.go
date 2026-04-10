@@ -1,7 +1,6 @@
 package emojimix
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	_ "github.com/mattn/go-sqlite3"
 
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
@@ -24,7 +21,7 @@ import (
 
 type emojiMetadata struct {
 	KnownSupportedEmoji []string             `json:"knownSupportedEmoji"`
-	Data               map[string]*emojiData `json:"data"`
+	Data                map[string]*emojiData `json:"data"`
 }
 
 type emojiData struct {
@@ -50,11 +47,6 @@ var (
 	// rune 序列 -> codepoint 字符串，用于从用户输入识别 emoji
 	runeToCP map[string]string
 	once     sync.Once
-
-	// SQLite 数据库
-	dbPath  string
-	db      *sql.DB
-	dbMutex sync.Mutex
 )
 
 func init() {
@@ -83,226 +75,52 @@ func loadData() {
 		mixIndex = make(map[string]string)
 		runeToCP = make(map[string]string)
 
-		dataDir := filepath.Join("data", "emojimix")
-		jsonPath := filepath.Join(dataDir, "metadata.json")
-		dbPath = filepath.Join(dataDir, "emojimix.db")
-
-		// 确保目录存在
-		_ = os.MkdirAll(dataDir, 0755)
-
-		// 检查 SQLite 数据库是否存在
-		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-			// 数据库不存在，从 JSON 加载并创建数据库
-			logrus.Infoln("[emojimix] 首次加载，正在从 JSON 构建数据库...")
-			if err := buildDBFromJSON(jsonPath); err != nil {
-				logrus.Errorf("[emojimix] 从JSON构建数据库失败: %v", err)
-				// 回退到纯内存模式
-				loadFromJSONOnly(jsonPath)
-				return
-			}
-			logrus.Infoln("[emojimix] 数据库构建完成")
-		}
-
-		// 从 SQLite 数据库加载到内存
-		if err := loadFromDB(); err != nil {
-			logrus.Errorf("[emojimix] 从数据库加载失败: %v", err)
-			// 回退到直接读取 JSON
-			loadFromJSONOnly(jsonPath)
+		path := filepath.Join("data", "emojimix", "metadata.json")
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			logrus.Errorf("[emojimix] 读取 metadata 失败: %v", err)
 			return
 		}
 
-		logrus.Infof("[emojimix] 加载完成: %d 个 emoji, %d 条合成索引",
-			len(runeToCP), len(mixIndex))
-	})
-}
-
-// loadFromJSONOnly 回退方案：直接从 JSON 加载到内存（不创建数据库）
-func loadFromJSONOnly(jsonPath string) {
-	raw, err := os.ReadFile(jsonPath)
-	if err != nil {
-		logrus.Errorf("[emojimix] 读取 metadata 失败: %v", err)
-		return
-	}
-
-	var meta emojiMetadata
-	if err := json.Unmarshal(raw, &meta); err != nil {
-		logrus.Errorf("[emojimix] 解析 metadata 失败: %v", err)
-		return
-	}
-
-	buildMapsFromMeta(&meta)
-}
-
-// buildDBFromJSON 从 JSON 文件构建 SQLite 数据库
-func buildDBFromJSON(jsonPath string) error {
-	raw, err := os.ReadFile(jsonPath)
-	if err != nil {
-		return fmt.Errorf("读取文件失败: %w", err)
-	}
-
-	var meta emojiMetadata
-	if err := json.Unmarshal(raw, &meta); err != nil {
-		return fmt.Errorf("解析JSON失败: %w", err)
-	}
-
-	// 创建数据库
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return fmt.Errorf("打开数据库失败: %w", err)
-	}
-	defer db.Close()
-
-	// 创建表
-	schema := `
-	CREATE TABLE IF NOT EXISTS emoji_runes (
-		runes TEXT PRIMARY KEY,
-		codepoint TEXT NOT NULL
-	);
-	CREATE TABLE IF NOT EXISTS emoji_mix (
-		key TEXT PRIMARY KEY,
-		url TEXT NOT NULL
-	);
-	CREATE INDEX IF NOT EXISTS idx_mix_url ON emoji_mix(key);
-	`
-	if _, err := db.Exec(schema); err != nil {
-		return fmt.Errorf("创建表失败: %w", err)
-	}
-
-	// 开启事务批量插入
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("开启事务失败: %w", err)
-	}
-
-	// 插入 rune 映射
-	stmtRune, err := tx.Prepare("INSERT OR REPLACE INTO emoji_runes (runes, codepoint) VALUES (?, ?)")
-	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf("准备rune语句失败: %w", err)
-	}
-	defer stmtRune.Close()
-
-	// 插入混合索引
-	stmtMix, err := tx.Prepare("INSERT OR REPLACE INTO emoji_mix (key, url) VALUES (?, ?)")
-	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf("准备mix语句失败: %w", err)
-	}
-	defer stmtMix.Close()
-
-	// 构建并插入数据
-	for _, cp := range meta.KnownSupportedEmoji {
-		runes := cpToRunes(cp)
-		runeStr := string(runes)
-		stmtRune.Exec(runeStr, cp)
-
-		// 同时存储去掉 FE0F/FE0E 的版本
-		stripped := stripVS(runes)
-		if len(stripped) != len(runes) {
-			stmtRune.Exec(string(stripped), cp)
+		var meta emojiMetadata
+		if err := json.Unmarshal(raw, &meta); err != nil {
+			logrus.Errorf("[emojimix] 解析 metadata 失败: %v", err)
+			return
 		}
-	}
 
-	for cp1, data := range meta.Data {
-		n1 := normalizeCP(cp1)
-		for cp2, combos := range data.Combinations {
-			n2 := normalizeCP(cp2)
-			for _, c := range combos {
-				if c.IsLatest && c.GStaticUrl != "" {
-					key := sortedPair(n1, n2)
-					stmtMix.Exec(key, c.GStaticUrl)
-					break
-				}
+		// 1) 构建 rune 序列 -> codepoint 映射 (用于识别用户输入中的 emoji)
+		for _, cp := range meta.KnownSupportedEmoji {
+			runes := cpToRunes(cp)
+			runeToCP[string(runes)] = cp
+			// 同时存储去掉 FE0F/FE0E 的版本，方便匹配用户输入
+			stripped := stripVS(runes)
+			if len(stripped) != len(runes) {
+				runeToCP[string(stripped)] = cp
 			}
 		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("提交事务失败: %w", err)
-	}
-
-	// 构建内存索引
-	buildMapsFromMeta(&meta)
-
-	return nil
-}
-
-// loadFromDB 从 SQLite 数据库加载到内存
-func loadFromDB() error {
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
-
-	var err error
-	db, err = sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return fmt.Errorf("打开数据库失败: %w", err)
-	}
-
-	// 设置连接池
-	db.SetMaxOpenConns(1)
-
-	// 加载 rune 映射
-	rows, err := db.Query("SELECT runes, codepoint FROM emoji_runes")
-	if err != nil {
-		return fmt.Errorf("查询runes失败: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var runes, codepoint string
-		if err := rows.Scan(&runes, &codepoint); err != nil {
-			continue
-		}
-		runeToCP[runes] = codepoint
-	}
-
-	// 加载混合索引
-	rows, err = db.Query("SELECT key, url FROM emoji_mix")
-	if err != nil {
-		return fmt.Errorf("查询mix失败: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var key, url string
-		if err := rows.Scan(&key, &url); err != nil {
-			continue
-		}
-		mixIndex[key] = url
-	}
-
-	return nil
-}
-
-// buildMapsFromMeta 从解析好的 meta 数据构建内存索引
-func buildMapsFromMeta(meta *emojiMetadata) {
-	// 1) 构建 rune 序列 -> codepoint 映射
-	for _, cp := range meta.KnownSupportedEmoji {
-		runes := cpToRunes(cp)
-		runeToCP[string(runes)] = cp
-		// 同时存储去掉 FE0F/FE0E 的版本
-		stripped := stripVS(runes)
-		if len(stripped) != len(runes) {
-			runeToCP[string(stripped)] = cp
-		}
-	}
-
-	// 2) 构建合成索引
-	for cp1, data := range meta.Data {
-		n1 := normalizeCP(cp1)
-		for cp2, combos := range data.Combinations {
-			n2 := normalizeCP(cp2)
-			for _, c := range combos {
-				if c.IsLatest && c.GStaticUrl != "" {
-					key := sortedPair(n1, n2)
-					if _, ok := mixIndex[key]; !ok {
-						mixIndex[key] = c.GStaticUrl
+		// 2) 构建合成索引
+		// 逻辑对应 kitchen.tsx:
+		//   getEmojiData(left).combinations[right].filter(c => c.isLatest)[0].gStaticUrl
+		for cp1, data := range meta.Data {
+			n1 := normalizeCP(cp1)
+			for cp2, combos := range data.Combinations {
+				n2 := normalizeCP(cp2)
+				for _, c := range combos {
+					if c.IsLatest && c.GStaticUrl != "" {
+						key := sortedPair(n1, n2)
+						if _, ok := mixIndex[key]; !ok {
+							mixIndex[key] = c.GStaticUrl
+						}
+						break
 					}
-					break
 				}
 			}
 		}
-	}
+
+		logrus.Infof("[emojimix] 加载完成: %d 个 emoji, %d 条合成索引",
+			len(meta.KnownSupportedEmoji), len(mixIndex))
+	})
 }
 
 // ---- 查询 ----
