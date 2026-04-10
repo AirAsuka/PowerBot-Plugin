@@ -46,7 +46,7 @@ import (
 
 	//_ "github.com/FloatTech/ZeroBot-Plugin/plugin/manager" // 群管
 
-	//_ "github.com/FloatTech/zbputils/job" // 定时指令触发器
+	//_ "github.com/AirAsuka/pbputils/job" // 定时指令触发器
 
 	//                               ^^^^                               //
 	//                          ^^^^^^^^^^^^^^                          //
@@ -199,7 +199,7 @@ import (
 	"github.com/wdvxdr1123/ZeroBot/driver"
 	"github.com/wdvxdr1123/ZeroBot/message"
 
-	// webctrl "github.com/FloatTech/zbputils/control/web"
+	// webctrl "github.com/AirAsuka/pbputils/control/web"
 
 	"github.com/FloatTech/ZeroBot-Plugin/kanban/banner"
 	// -----------------------以上为内置依赖，勿动------------------------ //

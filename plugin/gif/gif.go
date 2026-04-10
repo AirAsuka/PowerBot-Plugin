@@ -9,8 +9,8 @@ import (
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/gg"
 	"github.com/FloatTech/imgfactory"
-	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/img/text"
+	"github.com/AirAsuka/pbputils/control"
+	"github.com/AirAsuka/pbputils/img/text"
 )
 
 // mo 摸

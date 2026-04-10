@@ -4,7 +4,7 @@ package kanban
 import (
 	"fmt"
 
-	"github.com/FloatTech/zbputils/control"
+	"github.com/AirAsuka/pbputils/control"
 	"github.com/fumiama/go-registry"
 
 	"github.com/FloatTech/ZeroBot-Plugin/kanban/banner"

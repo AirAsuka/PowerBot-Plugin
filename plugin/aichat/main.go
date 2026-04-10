@@ -20,8 +20,8 @@ import (
 	"github.com/FloatTech/AnimeAPI/airecord"
 	"github.com/FloatTech/floatbox/process"
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/chat"
-	"github.com/FloatTech/zbputils/control"
+	"github.com/AirAsuka/pbputils/chat"
+	"github.com/AirAsuka/pbputils/control"
 )
 
 var (

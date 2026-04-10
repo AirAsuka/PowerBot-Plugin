@@ -305,7 +305,7 @@ zerobot [-h] [-m] [-n nickname] [-t token] [-u url] [-g url] [-p prefix] [-d|w] 
 <details>
   <summary>定时指令触发器</summary>
 
-  `import _ "github.com/FloatTech/zbputils/job"`
+  `import _ "github.com/AirAsuka/pbputils/job"`
 
   - 注意：触发器具有限速，每 2s 仅允许最多一次触发
 

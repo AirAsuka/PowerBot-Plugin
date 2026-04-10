@@ -7,7 +7,7 @@ import (
 
 	"github.com/FloatTech/AnimeAPI/kimoi"
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
+	"github.com/AirAsuka/pbputils/control"
 )
 
 func init() {

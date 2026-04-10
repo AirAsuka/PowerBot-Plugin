@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/FloatTech/zbputils/img/text"
+	"github.com/AirAsuka/pbputils/img/text"
 	sql "github.com/FloatTech/sqlite"
 )
 

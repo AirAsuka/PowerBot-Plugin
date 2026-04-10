@@ -7,8 +7,8 @@ import (
 	"time"
 
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
-	zbpCtxExt "github.com/FloatTech/zbputils/ctxext"
+	"github.com/AirAsuka/pbputils/control"
+	zbpCtxExt "github.com/AirAsuka/pbputils/ctxext"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )

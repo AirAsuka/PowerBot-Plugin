@@ -4,7 +4,7 @@ package b14coder
 import (
 	"github.com/FloatTech/floatbox/crypto"
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
+	"github.com/AirAsuka/pbputils/control"
 	base14 "github.com/fumiama/go-base16384"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"

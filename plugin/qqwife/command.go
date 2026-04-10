@@ -11,8 +11,8 @@ import (
 	"github.com/FloatTech/floatbox/math"
 	"github.com/FloatTech/imgfactory"
 	ctrl "github.com/FloatTech/zbpctrl"
-	control "github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/ctxext"
+	control "github.com/AirAsuka/pbputils/control"
+	"github.com/AirAsuka/pbputils/ctxext"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 
@@ -24,7 +24,7 @@ import (
 	fcext "github.com/FloatTech/floatbox/ctxext"
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/gg"
-	"github.com/FloatTech/zbputils/img/text"
+	"github.com/AirAsuka/pbputils/img/text"
 )
 
 type 婚姻登记 struct {

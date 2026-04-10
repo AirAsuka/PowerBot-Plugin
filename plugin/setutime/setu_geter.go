@@ -15,9 +15,9 @@ import (
 	"github.com/FloatTech/floatbox/process"
 	sql "github.com/FloatTech/sqlite"
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/ctxext"
-	imagepool "github.com/FloatTech/zbputils/img/pool"
+	"github.com/AirAsuka/pbputils/control"
+	"github.com/AirAsuka/pbputils/ctxext"
+	imagepool "github.com/AirAsuka/pbputils/img/pool"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )

@@ -7,7 +7,7 @@ import (
 
 	fcext "github.com/FloatTech/floatbox/ctxext"
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
+	"github.com/AirAsuka/pbputils/control"
 	wr "github.com/mroth/weightedrand"
 	"github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"

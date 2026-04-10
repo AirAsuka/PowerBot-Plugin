@@ -1,7 +1,7 @@
 package shadiao
 
 import (
-	"github.com/FloatTech/zbputils/ctxext"
+	"github.com/AirAsuka/pbputils/ctxext"
 	"github.com/antchfx/htmlquery"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"

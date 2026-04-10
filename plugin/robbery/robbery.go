@@ -10,11 +10,11 @@ import (
 	fcext "github.com/FloatTech/floatbox/ctxext"
 	sql "github.com/FloatTech/sqlite"
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
+	"github.com/AirAsuka/pbputils/control"
 
 	"github.com/FloatTech/AnimeAPI/wallet"
 	"github.com/FloatTech/floatbox/math"
-	"github.com/FloatTech/zbputils/ctxext"
+	"github.com/AirAsuka/pbputils/ctxext"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )

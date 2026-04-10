@@ -16,8 +16,8 @@ import (
 	"github.com/FloatTech/gg"
 	"github.com/FloatTech/imgfactory"
 	"github.com/FloatTech/rendercard"
-	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/img/text"
+	"github.com/AirAsuka/pbputils/control"
+	"github.com/AirAsuka/pbputils/img/text"
 	"github.com/disintegration/imaging"
 	_ "golang.org/x/image/webp" // 注册 WebP 解码器，支持 QQ 头像和背景图的 WebP 格式
 

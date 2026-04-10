@@ -14,8 +14,8 @@ import (
 	"github.com/FloatTech/floatbox/math"
 	sql "github.com/FloatTech/sqlite"
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/ctxext"
+	"github.com/AirAsuka/pbputils/control"
+	"github.com/AirAsuka/pbputils/ctxext"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )

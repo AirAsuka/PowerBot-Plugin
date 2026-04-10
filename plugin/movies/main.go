@@ -18,8 +18,8 @@ import (
 	"github.com/FloatTech/imgfactory"
 	"github.com/FloatTech/rendercard"
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/img/text"
+	"github.com/AirAsuka/pbputils/control"
+	"github.com/AirAsuka/pbputils/img/text"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/FloatTech/floatbox/binary"
-	"github.com/FloatTech/zbputils/img/text"
+	"github.com/AirAsuka/pbputils/img/text"
 	"github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"

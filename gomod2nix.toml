@@ -37,7 +37,7 @@ schema = 3
     version = 'v1.7.1'
     hash = 'sha256-wkeiaUTpPVbpH7fcXeoLtG+aGIMJbvoc/9sbi2IXK0I='
 
-  [mod.'github.com/FloatTech/zbputils']
+  [mod.'github.com/AirAsuka/pbputils']
     version = 'v1.7.2-0.20260314071304-549abb40dd64'
     hash = 'sha256-9kbkApOfYFFI8W7WTuJew560inX5b8TbA209NyWTB6M='
 

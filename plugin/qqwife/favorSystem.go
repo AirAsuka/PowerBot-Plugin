@@ -10,15 +10,15 @@ import (
 	"github.com/FloatTech/floatbox/math"
 	"github.com/FloatTech/imgfactory"
 	sql "github.com/FloatTech/sqlite"
-	control "github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/ctxext"
+	control "github.com/AirAsuka/pbputils/control"
+	"github.com/AirAsuka/pbputils/ctxext"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 
 	// 画图
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/gg"
-	"github.com/FloatTech/zbputils/img/text"
+	"github.com/AirAsuka/pbputils/img/text"
 
 	// 货币系统
 	"github.com/FloatTech/AnimeAPI/wallet"

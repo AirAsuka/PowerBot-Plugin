@@ -11,8 +11,8 @@ import (
 	ctrl "github.com/FloatTech/zbpctrl"
 	zero "github.com/wdvxdr1123/ZeroBot"
 
-	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/ctxext"
+	"github.com/AirAsuka/pbputils/control"
+	"github.com/AirAsuka/pbputils/ctxext"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 

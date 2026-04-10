@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/ctxext"
+	"github.com/AirAsuka/pbputils/control"
+	"github.com/AirAsuka/pbputils/ctxext"
 	"github.com/guohuiyuan/music-lib/kugou"
 	"github.com/guohuiyuan/music-lib/kuwo"
 	"github.com/guohuiyuan/music-lib/migu"

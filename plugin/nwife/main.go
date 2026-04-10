@@ -19,7 +19,7 @@ import (
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/process"
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
+	"github.com/AirAsuka/pbputils/control"
 )
 
 func init() {

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/ctxext"
+	"github.com/AirAsuka/pbputils/control"
+	"github.com/AirAsuka/pbputils/ctxext"
 	"github.com/RomiChan/syncx"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	zero "github.com/wdvxdr1123/ZeroBot"

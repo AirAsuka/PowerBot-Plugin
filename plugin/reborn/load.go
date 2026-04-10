@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/FloatTech/floatbox/file"
-	"github.com/FloatTech/zbputils/control"
+	"github.com/AirAsuka/pbputils/control"
 )
 
 // load 加载rate数据

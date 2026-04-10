@@ -11,8 +11,8 @@ import (
 	wyy "github.com/FloatTech/AnimeAPI/neteasemusic"
 	"github.com/FloatTech/imgfactory"
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/ctxext"
+	"github.com/AirAsuka/pbputils/control"
+	"github.com/AirAsuka/pbputils/ctxext"
 	"github.com/pkg/errors"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
@@ -21,7 +21,7 @@ import (
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/process"
 	"github.com/FloatTech/gg"
-	"github.com/FloatTech/zbputils/img/text"
+	"github.com/AirAsuka/pbputils/img/text"
 )
 
 const serviceErr = "[guessmusic]error:"

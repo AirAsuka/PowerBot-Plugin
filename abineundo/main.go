@@ -30,7 +30,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/FloatTech/zbputils/control"
+	"github.com/AirAsuka/pbputils/control"
 	"github.com/sirupsen/logrus"
 )
 

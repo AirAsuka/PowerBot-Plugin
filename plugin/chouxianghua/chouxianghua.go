@@ -11,7 +11,7 @@ import (
 	fcext "github.com/FloatTech/floatbox/ctxext"
 	sql "github.com/FloatTech/sqlite"
 	ctrl "github.com/FloatTech/zbpctrl"
-	"github.com/FloatTech/zbputils/control"
+	"github.com/AirAsuka/pbputils/control"
 )
 
 func init() {
