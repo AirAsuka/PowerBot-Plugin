@@ -2,8 +2,8 @@
 package amongus
 
 import (
-	"net/url"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -12,13 +12,14 @@ import (
 	fcext "github.com/FloatTech/floatbox/ctxext"
 	"github.com/FloatTech/floatbox/web"
 	sql "github.com/FloatTech/sqlite"
-	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/img/text"
 	"github.com/tidwall/gjson"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
+
+	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 )
 
 const (

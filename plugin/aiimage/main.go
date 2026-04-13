@@ -134,7 +134,7 @@ func init() {
 				subjectRef := make([]map[string]interface{}, 0, len(imageURLs))
 				for _, url := range imageURLs {
 					subjectRef = append(subjectRef, map[string]interface{}{
-						"type":        "character",
+						"type":       "character",
 						"image_file": url,
 					})
 				}
@@ -199,10 +199,10 @@ func init() {
 			resultImages.ForEach(func(_, value gjson.Result) bool {
 				url := value.String()
 				if len(url) > 100 {
-				logrus.Infoln("[aiimage] 图片URL前100字符:", url[:100])
-			} else {
-				logrus.Infoln("[aiimage] 图片URL:", url)
-			}
+					logrus.Infoln("[aiimage] 图片URL前100字符:", url[:100])
+				} else {
+					logrus.Infoln("[aiimage] 图片URL:", url)
+				}
 				if url != "" {
 					msg = append(msg, ctxext.FakeSenderForwardNode(ctx, message.Image(url)))
 					imageCount++

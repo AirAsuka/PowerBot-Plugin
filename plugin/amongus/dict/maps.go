@@ -1,3 +1,4 @@
+// Package dict 提供 amongus 游戏数据
 package dict
 
 // RoleTextReverse 中文名 -> 英文名列表的反向映射（自动从 RoleText 生成）
@@ -166,4 +167,3 @@ var RoleText = map[string]string{
 	"SoulSight":            "窥天者",
 	"Shifter":              "交换师",
 }
-

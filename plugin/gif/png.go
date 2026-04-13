@@ -16,6 +16,8 @@ import (
 )
 
 // pa 爬
+//
+//nolint:unused
 func pa(cc *context, args ...string) (string, error) {
 	_ = args
 	name := cc.usrdir + "爬.png"

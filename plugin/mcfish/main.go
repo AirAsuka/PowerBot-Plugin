@@ -119,19 +119,19 @@ type buffInfo struct {
 }
 
 var (
-	articlesInfo  = jsonInfo{}                            // 物品信息
-	thingList     = make([]string, 0, 100)                // 竿列表
-	poleList      = make([]string, 0, 10)                 // 竿列表
-	fishList      = make([]string, 0, 10)                 // 鱼列表
-	treasureList  = make([]string, 0, 10)                 // 鱼列表
-	wasteList     = make([]string, 0, 10)                 // 垃圾列表
-	probabilities = make(map[string]probabilityLimit, 50) // 概率分布
-	priceList     = make(map[string]int, 50)              // 价格分布
-	durationList  = make(map[string]int, 50)              // 装备耐久分布
-	discountList  = make(map[string]int, 50)              // 价格波动信息
-	enchantLevel    = []string{"0", "Ⅰ", "Ⅱ", "Ⅲ"}
-	dbdata          fishdb
-	disabledGroups  sync.Map // 禁用钓鱼的群 map[int64]struct{}
+	articlesInfo   = jsonInfo{}                            // 物品信息
+	thingList      = make([]string, 0, 100)                // 竿列表
+	poleList       = make([]string, 0, 10)                 // 竿列表
+	fishList       = make([]string, 0, 10)                 // 鱼列表
+	treasureList   = make([]string, 0, 10)                 // 鱼列表
+	wasteList      = make([]string, 0, 10)                 // 垃圾列表
+	probabilities  = make(map[string]probabilityLimit, 50) // 概率分布
+	priceList      = make(map[string]int, 50)              // 价格分布
+	durationList   = make(map[string]int, 50)              // 装备耐久分布
+	discountList   = make(map[string]int, 50)              // 价格波动信息
+	enchantLevel   = []string{"0", "Ⅰ", "Ⅱ", "Ⅲ"}
+	dbdata         fishdb
+	disabledGroups sync.Map // 禁用钓鱼的群 map[int64]struct{}
 )
 
 var (

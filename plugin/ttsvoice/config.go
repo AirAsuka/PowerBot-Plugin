@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/FloatTech/zbputils/img/text"
 	sql "github.com/FloatTech/sqlite"
+	"github.com/FloatTech/zbputils/img/text"
 )
 
 // 默认配置
@@ -20,7 +20,7 @@ const (
 	DefaultPitch   = 1.0
 )
 
-// voiceList 音色列表
+// VoiceList 音色列表
 var VoiceList = []struct {
 	ID   string
 	Name string
@@ -93,14 +93,14 @@ type storage struct {
 
 // voiceConfig 存储语音合成配置信息
 type voiceConfig struct {
-	ID        int64  `db:"id"`        // 主键ID
-	APIKey    string `db:"apiKey"`    // API密钥
-	APIURL    string `db:"apiUrl"`    // API地址
-	ModelName string `db:"modelName"` // 模型名称
-	VoiceID   string `db:"voiceId"`   // 默认音色ID
-	Speed     float64 `db:"speed"`    // 语速
-	Volume    int     `db:"vol"`      // 音量
-	Pitch     float64 `db:"pitch"`    // 音调
+	ID        int64   `db:"id"`        // 主键ID
+	APIKey    string  `db:"apiKey"`    // API密钥
+	APIURL    string  `db:"apiUrl"`    // API地址
+	ModelName string  `db:"modelName"` // 模型名称
+	VoiceID   string  `db:"voiceId"`   // 默认音色ID
+	Speed     float64 `db:"speed"`     // 语速
+	Volume    int     `db:"vol"`       // 音量
+	Pitch     float64 `db:"pitch"`     // 音调
 }
 
 // userVoice 用户音色配置
@@ -149,7 +149,7 @@ func (sdb *storage) setConfig(apiKey, apiURL, modelName, voiceID string, speed f
 		VoiceID:   voiceID,
 		Speed:     speed,
 		Volume:    vol,
-		Pitch:    pitch,
+		Pitch:     pitch,
 	})
 }
 

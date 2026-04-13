@@ -1,3 +1,4 @@
+// Package dict 提供 amongus 游戏数据
 package dict
 
 import (

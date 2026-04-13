@@ -1,3 +1,4 @@
+// Package memes 表情包制作插件
 package memes
 
 import (
@@ -18,6 +19,7 @@ import (
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
+	pkgerrors "github.com/pkg/errors"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
@@ -56,7 +58,7 @@ func init() {
 	_ = os.MkdirAll(dataDir, 0755)
 
 	registerCommands()
-	go loadMemeData()
+	go func() { _ = loadMemeData() }()
 
 	en.OnFullMatch("memes测试").SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		mu.RLock()
@@ -312,7 +314,6 @@ func findMatchingMeme(msg string) *matchedMeme {
 
 			if remainder == "" || strings.HasPrefix(remainder, " ") ||
 				strings.HasPrefix(remainder, "@") || strings.HasPrefix(remainder, "[CQ:") {
-
 				mInfo := infos[memeKey]
 				if mInfo == nil {
 					continue
@@ -340,7 +341,7 @@ func ensureDataLoaded() {
 		return
 	}
 	mu.RUnlock()
-	loadMemeData()
+	_ = loadMemeData()
 }
 
 func checkAPI() bool {
@@ -642,7 +643,7 @@ func loadMemeData() error {
 
 	memeInfos, err := fetchMemeInfos()
 	if err != nil {
-		return fmt.Errorf("从API获取表情列表失败: %w", err)
+		return pkgerrors.Wrap(err, "从API获取表情列表失败")
 	}
 
 	newInfos := make(map[string]*MemeInfo)

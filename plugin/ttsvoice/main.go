@@ -24,6 +24,7 @@ import (
 
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
+	pkgerrors "github.com/pkg/errors"
 )
 
 func init() {
@@ -110,12 +111,12 @@ func init() {
 				return
 			}
 			validModels := map[string]bool{
-				"speech-2.8-hd":   true,
-				"speech-2.6-hd":   true,
+				"speech-2.8-hd":    true,
+				"speech-2.6-hd":    true,
 				"speech-2.8-turbo": true,
 				"speech-2.6-turbo": true,
-				"speech-02-hd":   true,
-				"speech-02-turbo": true,
+				"speech-02-hd":     true,
+				"speech-02-turbo":  true,
 			}
 			if !validModels[modelName] {
 				ctx.SendChain(message.Text("无效的模型名称"))
@@ -302,11 +303,6 @@ func init() {
 			}
 
 			// 2. 轮询查询任务状态
-			taskIDShorthand := taskID
-			if len(taskIDShorthand) > 8 {
-				taskIDShorthand = taskIDShorthand[:8]
-			}
-			// ctx.SendChain(message.Text("任务创建成功，等待合成... (task_id:", taskIDShorthand, "...)"))
 			logrus.Infoln("[ttsvoice] taskID:", taskID)
 			var fileID string
 			for i := 0; i < 30; i++ { // 最多等待30秒
@@ -384,7 +380,7 @@ func (sdb *storage) createTask(apiKey, apiURL, model, text, voiceID string, spee
 	statusCode := gjson.Get(respStr, "base_resp.status_code").Int()
 	statusMsg := gjson.Get(respStr, "base_resp.status_msg").String()
 	if statusCode != 0 && statusMsg != "" {
-		return "", fmt.Errorf("API错误 %d: %s", statusCode, statusMsg)
+		return "", pkgerrors.New(fmt.Sprintf("API错误 %d: %s", statusCode, statusMsg))
 	}
 
 	// 解析task_id (可能是整数或字符串)
@@ -398,7 +394,7 @@ func (sdb *storage) createTask(apiKey, apiURL, model, text, voiceID string, spee
 	}
 	logrus.Infoln("[ttsvoice] 解析到的taskID:", taskID)
 	if taskID == "" || taskID == "0" {
-		return "", fmt.Errorf("未获取到有效的task_id: %s", respStr)
+		return "", pkgerrors.New(fmt.Sprintf("未获取到有效的task_id: %s", respStr))
 	}
 
 	return taskID, nil

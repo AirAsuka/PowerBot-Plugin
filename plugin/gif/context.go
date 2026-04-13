@@ -45,6 +45,7 @@ func dlchan(name string, s *string, wg *sync.WaitGroup, exit func(error)) {
 	*s = target
 }
 
+//nolint:unused
 func dlblock(name string) (string, error) {
 	target := datapath + `materials/` + name
 	if file.IsNotExist(target) {

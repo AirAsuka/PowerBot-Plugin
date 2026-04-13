@@ -200,9 +200,9 @@ func init() {
 			// 识图模式：发送图片+文本
 			logrus.Debugln("[aichat] 识图模式, 图片数量:", len(imageURLs))
 			imgAPI := deepinfra.NewAPI(chat.AC.ImageAPI, string(chat.AC.ImageKey))
-			imgMod, err := chat.AC.ImageType.Protocol(chat.AC.ImageModelName, temperature, topp, maxn)
-			if err != nil {
-				logrus.Warnln("ERROR: ", err)
+			imgMod, imgErr := chat.AC.ImageType.Protocol(chat.AC.ImageModelName, temperature, topp, maxn)
+			if imgErr != nil {
+				logrus.Warnln("ERROR: ", imgErr)
 				return
 			}
 			contents := make([]model.Content, 0, len(imageURLs)+1)

@@ -6,8 +6,8 @@ import (
 	"errors"
 	"image"
 	"image/gif"
-	_ "image/jpeg"
-	_ "image/png"
+	_ "image/jpeg" // register JPEG decoder
+	_ "image/png"  // register PNG decoder
 	"math/rand"
 	"os"
 	"path/filepath"

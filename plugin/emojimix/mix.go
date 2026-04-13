@@ -1,3 +1,4 @@
+// Package emojimix emoji表情混合插件
 package emojimix
 
 import (
@@ -20,7 +21,7 @@ import (
 // ---- metadata.json 结构体 (对应 emoji-kitchen-main/src/Components/types.tsx) ----
 
 type emojiMetadata struct {
-	KnownSupportedEmoji []string             `json:"knownSupportedEmoji"`
+	KnownSupportedEmoji []string              `json:"knownSupportedEmoji"`
 	Data                map[string]*emojiData `json:"data"`
 }
 
@@ -32,7 +33,7 @@ type emojiData struct {
 }
 
 type emojiCombination struct {
-	GStaticUrl          string `json:"gStaticUrl"`
+	GStaticURL          string `json:"gStaticUrl"`
 	Alt                 string `json:"alt"`
 	LeftEmojiCodepoint  string `json:"leftEmojiCodepoint"`
 	RightEmojiCodepoint string `json:"rightEmojiCodepoint"`
@@ -107,10 +108,10 @@ func loadData() {
 			for cp2, combos := range data.Combinations {
 				n2 := normalizeCP(cp2)
 				for _, c := range combos {
-					if c.IsLatest && c.GStaticUrl != "" {
+					if c.IsLatest && c.GStaticURL != "" {
 						key := sortedPair(n1, n2)
 						if _, ok := mixIndex[key]; !ok {
-							mixIndex[key] = c.GStaticUrl
+							mixIndex[key] = c.GStaticURL
 						}
 						break
 					}
