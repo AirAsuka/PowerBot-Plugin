@@ -5,13 +5,14 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
-	"html"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/FloatTech/floatbox/file"
+	"github.com/FloatTech/floatbox/process"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
@@ -21,8 +22,8 @@ import (
 
 // KeywordImage 关键词图片结构
 type KeywordImage struct {
-	Keyword string `json:"keyword"`
-	Image   string `json:"image"` // 本地图片路径
+	Keyword  string `json:"keyword"`
+	ImageURL string `json:"image_url"` // 本地图片路径
 }
 
 // 插件数据
@@ -79,8 +80,7 @@ func init() {
 				ctx.SendChain(message.Text("没有检测到图片"))
 				return
 			}
-			// 解码HTML实体 (如 &amp; -> &)
-			imageURL := html.UnescapeString(urls[0])
+			url := urls[0]
 
 			// 解析关键词
 			keyword := strings.TrimSpace(args)
@@ -90,18 +90,29 @@ func init() {
 			}
 
 			// 生成文件名
-			hash := md5hash(imageURL)
-			ext := getExt(imageURL)
+			hash := md5hash(url)
+			ext := getExt(url)
 			filename := fmt.Sprintf("%s_%s%s", keyword, hash, ext)
 			localPath := filepath.Join(imagesDir, filename)
 
-			// 下载图片
-			ctx.SendChain(message.Text("正在下载图片..."))
-			err := file.DownloadTo(imageURL, localPath)
-			if err != nil {
-				ctx.SendChain(message.Text("下载图片失败: ", err))
+			// 下载图片（带超时）
+			done := make(chan error, 1)
+			go func() {
+				done <- file.DownloadTo(url, localPath)
+			}()
+
+			select {
+			case err := <-done:
+				if err != nil {
+					ctx.SendChain(message.Text("下载图片失败: ", err))
+					return
+				}
+			case <-time.After(30 * time.Second):
+				ctx.SendChain(message.Text("下载图片超时"))
 				return
 			}
+
+			process.SleepAbout1sTo2s()
 
 			// 保存关键词
 			RWMutex.Lock()
@@ -198,6 +209,11 @@ func getExt(url string) string {
 	return ".jpg"
 }
 
+// md5hash 计算字符串的MD5哈希
+func md5hash(s string) string {
+	return fmt.Sprintf("%x", md5.Sum([]byte(s)))
+}
+
 // loadData 从文件加载关键词数据
 func loadData() {
 	loadOnce.Do(func() {
@@ -217,8 +233,8 @@ func loadData() {
 
 		for _, kw := range keywords {
 			// 验证图片文件是否存在
-			if _, err := os.Stat(kw.Image); err == nil {
-				keywordData[kw.Keyword] = kw.Image
+			if _, err := os.Stat(kw.ImageURL); err == nil {
+				keywordData[kw.Keyword] = kw.ImageURL
 			}
 		}
 	})
@@ -230,8 +246,8 @@ func saveData() {
 	RWMutex.RLock()
 	for keyword, imagePath := range keywordData {
 		keywords = append(keywords, KeywordImage{
-			Keyword: keyword,
-			Image:   imagePath,
+			Keyword:  keyword,
+			ImageURL: imagePath,
 		})
 	}
 	RWMutex.RUnlock()
@@ -249,9 +265,4 @@ func saveData() {
 	tmpFile := dataFile + ".tmp"
 	os.WriteFile(tmpFile, data, 0644)
 	os.Rename(tmpFile, dataFile)
-}
-
-// md5hash 计算字符串的MD5哈希
-func md5hash(s string) string {
-	return fmt.Sprintf("%x", md5.Sum([]byte(s)))
 }
