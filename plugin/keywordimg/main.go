@@ -16,6 +16,7 @@ import (
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
+	"github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
@@ -56,6 +57,8 @@ func init() {
 
 	// 确保图片目录存在
 	os.MkdirAll(imagesDir, 0755)
+
+	logrus.Infoln("[keywordimg] 插件加载完成，关键词数:", len(keywordData))
 
 	// 关键词检测 - 在群聊中检测消息是否包含关键词
 	engine.OnMessage(filter, zero.OnlyGroup).SetBlock(false).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
