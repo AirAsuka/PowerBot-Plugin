@@ -228,10 +228,15 @@ func filter(ctx *zero.Ctx) bool {
 	RWMutex.RLock()
 	defer RWMutex.RUnlock()
 
+	// 调试
+	println("[keywordimg] 检查消息:", text, "数据条数:", len(keywordData))
+
 	// 检查消息是否包含任何关键词
-	for keyword := range keywordData {
+	for keyword, path := range keywordData {
+		println("[keywordimg] 遍历关键词:", keyword, "路径:", path)
 		if strings.Contains(text, keyword) {
 			ctx.State["matched_keyword"] = keyword
+			println("[keywordimg] 匹配成功:", keyword)
 			return true
 		}
 	}
