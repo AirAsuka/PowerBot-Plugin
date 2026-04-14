@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,7 +79,8 @@ func init() {
 				ctx.SendChain(message.Text("没有检测到图片"))
 				return
 			}
-			imageURL := urls[0]
+			// 解码HTML实体 (如 &amp; -> &)
+			imageURL := html.UnescapeString(urls[0])
 
 			// 解析关键词
 			keyword := strings.TrimSpace(args)
