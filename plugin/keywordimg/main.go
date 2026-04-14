@@ -75,20 +75,42 @@ func init() {
 		uid := ctx.Event.UserID
 		args := ctx.State["args"].(string)
 
-		// 解析参数: 关键词 [图片url]
-		parts := strings.SplitN(args, " ", 2)
-		if len(parts) < 1 || parts[0] == "" {
-			ctx.SendChain(message.Text("格式错误，请使用: 加关键词 xxx [图片url]"))
+		keyword := ""
+		var imageURL string
+
+		// 尝试从消息段中提取图片
+		for _, seg := range ctx.Event.Message {
+			if seg.Type == "image" {
+				imageURL = seg.Data["url"]
+				break
+			}
+		}
+
+		// 解析关键词: 支持 "关键词" 或 "关键词 [图片url]"
+		// 也支持 "关键词[CQ:image,..." (关键词和图片紧贴)
+		trimmedArgs := strings.TrimSpace(args)
+
+		// 尝试查找 CQ:image 模式的位置
+		cqIndex := strings.Index(trimmedArgs, "[CQ:image")
+		if cqIndex > 0 {
+			// 格式: 关键词[CQ:image,...]
+			keyword = strings.TrimSpace(trimmedArgs[:cqIndex])
+		} else {
+			// 尝试空格分割
+			parts := strings.SplitN(trimmedArgs, " ", 2)
+			keyword = strings.TrimSpace(parts[0])
+			if len(parts) >= 2 && imageURL == "" {
+				// parts[1] 可能是图片URL
+				imageURL = strings.TrimSpace(parts[1])
+			}
+		}
+
+		if keyword == "" {
+			ctx.SendChain(message.Text("格式错误，请使用: 加关键词 xxx [图片]"))
 			return
 		}
 
-		keyword := strings.TrimSpace(parts[0])
-		var imageURL string
-
-		if len(parts) >= 2 && strings.TrimSpace(parts[1]) != "" {
-			// 格式1: 关键词和图片URL在同一行
-			imageURL = strings.TrimSpace(parts[1])
-		} else {
+		if imageURL == "" {
 			// 格式2: 需要用户回复一张图片
 			ctx.SendChain(message.Text("请回复一张图片来设置关键词 ", keyword, " 的图片"))
 
@@ -116,6 +138,11 @@ func init() {
 				}
 			}
 		done:
+		}
+
+		if imageURL == "" {
+			ctx.SendChain(message.Text("图片不能为空"))
+			return
 		}
 
 		if imageURL == "" {
