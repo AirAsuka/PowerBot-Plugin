@@ -16,7 +16,6 @@ import (
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
-	"github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
@@ -154,7 +153,6 @@ func init() {
 		ctx.SendChain(message.Text("正在下载图片..."))
 		localPath, err := downloadImage(imageURL, keyword)
 		if err != nil {
-			logrus.Errorln("[keywordimg] 下载图片失败:", err)
 			ctx.SendChain(message.Text("下载图片失败: ", err))
 			return
 		}
@@ -218,9 +216,12 @@ func init() {
 func filter(ctx *zero.Ctx) bool {
 	// 获取消息纯文本内容
 	text := ctx.Event.Message.ExtractPlainText()
+	if text == "" {
+		return false
+	}
 
-	// 跳过命令消息，避免命令本身触发关键词检测
-	if zero.PrefixRule("加关键词")(ctx) || zero.PrefixRule("删关键词")(ctx) || zero.FullMatchRule("查看关键词列表")(ctx) {
+	// 跳过以命令前缀开头的消息
+	if strings.HasPrefix(text, "加关键词") || strings.HasPrefix(text, "删关键词") || strings.HasPrefix(text, "查看关键词") {
 		return false
 	}
 
