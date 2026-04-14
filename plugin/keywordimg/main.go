@@ -5,14 +5,15 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/jpeg" // register JPEG decoder
+	_ "image/png"  // register PNG decoder
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/FloatTech/floatbox/file"
-	"github.com/FloatTech/floatbox/process"
+	"github.com/FloatTech/floatbox/web"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
@@ -70,49 +71,41 @@ func init() {
 	})
 
 	// 加关键词命令 (需要管理员权限)
-	engine.OnPrefix("加关键词", zero.OnlyGroup, zero.AdminPermission, zero.MustProvidePicture).SetBlock(true).
+	engine.OnRegex(`^加关键词\s*(.+?)\s*$`, zero.OnlyGroup, zero.AdminPermission, zero.MustProvidePicture).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
-			args := ctx.State["args"].(string)
+			id := ctx.Event.MessageID
+			keyword := ctx.State["regex_matched"].([]string)[1]
 
-			// 获取图片URL
-			urls := ctx.State["image_url"].([]string)
-			if len(urls) == 0 {
-				ctx.SendChain(message.Text("没有检测到图片"))
+			if keyword == "" {
+				ctx.Send(message.ReplyWithMessage(id, message.Text("请使用正确的指令形式: 加关键词 xxx")))
 				return
 			}
-			url := urls[0]
 
-			// 解析关键词
-			keyword := strings.TrimSpace(args)
-			if keyword == "" {
-				ctx.SendChain(message.Text("请指定关键词，格式: 加关键词 xxx"))
+			picURL := ctx.State["image_url"].([]string)[0]
+			picData, err := web.GetData(picURL)
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR: ", err))
+				return
+			}
+
+			// 获取图片格式
+			_, format, err := image.DecodeConfig(strings.NewReader(string(picData)))
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR: 不支持的图片格式"))
 				return
 			}
 
 			// 生成文件名
-			hash := md5hash(url)
-			ext := getExt(url)
-			filename := fmt.Sprintf("%s_%s%s", keyword, hash, ext)
+			hash := md5hash(picURL)
+			filename := fmt.Sprintf("%s_%s.%s", keyword, hash, format)
 			localPath := filepath.Join(imagesDir, filename)
 
-			// 下载图片（带超时）
-			done := make(chan error, 1)
-			go func() {
-				done <- file.DownloadTo(url, localPath)
-			}()
-
-			select {
-			case err := <-done:
-				if err != nil {
-					ctx.SendChain(message.Text("下载图片失败: ", err))
-					return
-				}
-			case <-time.After(30 * time.Second):
-				ctx.SendChain(message.Text("下载图片超时"))
+			// 保存图片
+			err = os.WriteFile(localPath, picData, 0644)
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR: ", err))
 				return
 			}
-
-			process.SleepAbout1sTo2s()
 
 			// 保存关键词
 			RWMutex.Lock()
@@ -123,7 +116,7 @@ func init() {
 			saveData()
 			RWMutex.Unlock()
 
-			ctx.SendChain(message.Text("关键词 [", keyword, "] 添加成功"))
+			ctx.Send(message.ReplyWithMessage(id, message.Text("关键词 [", keyword, "] 添加成功")))
 		})
 
 	// 删关键词命令 (需要管理员权限)
@@ -192,21 +185,6 @@ func filter(ctx *zero.Ctx) bool {
 		}
 	}
 	return false
-}
-
-// getExt 获取图片扩展名
-func getExt(url string) string {
-	url = strings.ToLower(url)
-	idx := strings.LastIndex(url, ".")
-	if idx == -1 {
-		return ".jpg"
-	}
-	ext := url[idx:]
-	switch ext {
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
-		return ext
-	}
-	return ".jpg"
 }
 
 // md5hash 计算字符串的MD5哈希
