@@ -71,7 +71,7 @@ func init() {
 	})
 
 	// 加关键词命令 (需要管理员权限)
-	engine.OnRegex(`^加关键词\s*(.+?)\s*$`, zero.OnlyGroup, zero.AdminPermission, zero.MustProvidePicture).SetBlock(true).
+	engine.OnRegex(`^加关键词\s+(.+?)(?:\s+|$)`, zero.OnlyGroup, zero.AdminPermission, zero.MustProvidePicture).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			id := ctx.Event.MessageID
 			keyword := ctx.State["regex_matched"].([]string)[1]
