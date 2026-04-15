@@ -77,6 +77,7 @@ func init() {
 			println("[keywordimg] OnRegex 匹配成功，进入 handler")
 			id := ctx.Event.MessageID
 			keyword := ctx.State["regex_matched"].([]string)[1]
+			println("[keywordimg] 提取到关键词:", keyword)
 
 			if keyword == "" {
 				ctx.Send(message.ReplyWithMessage(id, message.Text("请使用正确的指令形式: 加关键词 xxx")))
@@ -84,30 +85,38 @@ func init() {
 			}
 
 			picURL := ctx.State["image_url"].([]string)[0]
+			println("[keywordimg] 获取到图片URL:", picURL)
 			picData, err := web.GetData(picURL)
 			if err != nil {
+				println("[keywordimg] 下载图片失败:", err)
 				ctx.SendChain(message.Text("ERROR: ", err))
 				return
 			}
+			println("[keywordimg] 图片数据长度:", len(picData))
 
 			// 获取图片格式
 			_, format, err := image.DecodeConfig(strings.NewReader(string(picData)))
 			if err != nil {
+				println("[keywordimg] 解码图片格式失败:", err)
 				ctx.SendChain(message.Text("ERROR: 不支持的图片格式"))
 				return
 			}
+			println("[keywordimg] 图片格式:", format)
 
 			// 生成文件名
 			hash := md5hash(picURL)
 			filename := fmt.Sprintf("%s_%s.%s", keyword, hash, format)
 			localPath := filepath.Join(imagesDir, filename)
+			println("[keywordimg] 文件路径:", localPath)
 
 			// 保存图片
 			err = os.WriteFile(localPath, picData, 0644)
 			if err != nil {
+				println("[keywordimg] 保存图片文件失败:", err)
 				ctx.SendChain(message.Text("ERROR: ", err))
 				return
 			}
+			println("[keywordimg] 图片保存成功")
 
 			// 保存关键词
 			RWMutex.Lock()
