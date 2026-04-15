@@ -182,9 +182,11 @@ func filter(ctx *zero.Ctx) bool {
 	for keyword := range keywordData {
 		if strings.Contains(text, keyword) {
 			ctx.State["matched_keyword"] = keyword
+			println("[keywordimg] 匹配成功:", keyword)
 			return true
 		}
 	}
+	println("[keywordimg] 未匹配，text:", text, "数据条数:", len(keywordData))
 	return false
 }
 
