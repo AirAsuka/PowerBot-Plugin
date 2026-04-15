@@ -103,9 +103,8 @@ func init() {
 			}
 			println("[keywordimg] 图片格式:", format)
 
-			// 生成文件名
-			hash := md5hash(picURL)
-			filename := fmt.Sprintf("%s_%s.%s", keyword, hash, format)
+			// 生成文件名（只用关键词，不用hash，避免重复保存时创建不同文件）
+			filename := fmt.Sprintf("%s.%s", keyword, format)
 			localPath := filepath.Join(imagesDir, filename)
 			println("[keywordimg] 文件路径:", localPath)
 
