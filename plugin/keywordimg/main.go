@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/web"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
@@ -46,8 +47,8 @@ func init() {
 		PrivateDataFolder: "keywordimg",
 	})
 
-	dataFile = engine.DataFolder() + "keywords.json"
-	imagesDir = engine.DataFolder() + "images"
+	dataFile = file.BOTPATH + "/" + engine.DataFolder() + "keywords.json"
+	imagesDir = file.BOTPATH + "/" + engine.DataFolder() + "images"
 
 	loadData()
 	os.MkdirAll(imagesDir, 0755)
