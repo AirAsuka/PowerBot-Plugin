@@ -106,6 +106,7 @@ func init() {
 			filename := fmt.Sprintf("%s.%s", keyword, format)
 			localPath := filepath.Join(imagesDir, filename)
 			os.WriteFile(localPath, picData, 0644)
+			fmt.Println("[keywordimg] 保存到:", localPath, "大小:", len(picData))
 
 			RWMutex.Lock()
 			if oldPath, ok := keywordData[keyword]; ok {
