@@ -115,6 +115,7 @@ func init() {
 			}
 			keywordData[keyword] = localPath
 			saveData()
+			println("[keywordimg] 保存关键词:", keyword, "路径:", localPath, "当前条数:", len(keywordData))
 			RWMutex.Unlock()
 
 			ctx.Send(message.ReplyWithMessage(id, message.Text("关键词 [", keyword, "] 添加成功")))
