@@ -71,10 +71,26 @@ func init() {
 	})
 
 	// 加关键词命令 (需要管理员权限)
-	engine.OnRegex(`^加关键词\s+(.+?)(?:\s+|$)`, zero.OnlyGroup, zero.AdminPermission, zero.MustProvidePicture).SetBlock(true).
+	engine.OnRegex(`^加关键词\s+`, zero.OnlyGroup, zero.AdminPermission, zero.MustProvidePicture).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			id := ctx.Event.MessageID
-			keyword := ctx.State["regex_matched"].([]string)[1]
+
+			// 从消息中提取关键词（去掉CQ码）
+			keyword := ""
+			for _, seg := range ctx.Event.Message {
+				if seg.Type == "text" {
+					text := seg.Data["text"]
+					// 去掉CQ码
+					start := strings.Index(text, "[CQ:")
+					if start != -1 {
+						text = text[:start]
+					}
+					// 去掉前缀 "加关键词"
+					text = strings.TrimPrefix(text, "加关键词")
+					keyword = strings.TrimSpace(text)
+					break
+				}
+			}
 
 			if keyword == "" {
 				ctx.Send(message.ReplyWithMessage(id, message.Text("请使用正确的指令形式: 加关键词 xxx")))
