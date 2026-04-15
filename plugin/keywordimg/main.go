@@ -74,6 +74,7 @@ func init() {
 	// 格式: 加关键词 xxx[CQ:image,...] 或 加关键词 xxx [CQ:image,...]
 	engine.OnRegex(`^加关键词\s+(.+?)\s*\[CQ`, zero.OnlyGroup, zero.AdminPermission, zero.MustProvidePicture).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
+			println("[keywordimg] OnRegex 匹配成功，进入 handler")
 			id := ctx.Event.MessageID
 			keyword := ctx.State["regex_matched"].([]string)[1]
 
