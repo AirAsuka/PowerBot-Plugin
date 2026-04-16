@@ -104,7 +104,7 @@ import (
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/genshin"           // 原神抽卡
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/gif"        // 制图
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/guessmusic" // 猜歌
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/memes"      // 表情包制作
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/memes"      // 表情包制作
 
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/handou"            // 猜成语 √
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/hitokoto" // 一言 √
