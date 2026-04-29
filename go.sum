@@ -6,6 +6,8 @@ github.com/FloatTech/floatbox v0.0.0-20251002074805-f95cbc7edb31 h1:2K+/M64ixD1P
 github.com/FloatTech/floatbox v0.0.0-20251002074805-f95cbc7edb31/go.mod h1:kf+Ywc2lk8PLdg3RX0vrUmFLPO6k+23MFmt4GviV8C0=
 github.com/FloatTech/gg v1.1.4-0.20260404155637-671db2feeebb h1:9CxMctre5XIsFHNQTzZvdg5kLub5QZEsrV6E5rSKKfs=
 github.com/FloatTech/gg v1.1.4-0.20260404155637-671db2feeebb/go.mod h1:nweVlCnDkEXFVRq6t8gkzoUgD5uVI/5yAjBFfQDdE3Y=
+github.com/FloatTech/imgfactory v0.2.1 h1:XoVwy0Xu0AvTRtzlhv5teZcuZlAcHrYjeQ8MynJ/zlk=
+github.com/FloatTech/imgfactory v0.2.1/go.mod h1:QBJKHbzpE+x/9Wn7mXebWap/K/xUJSjgiaelAElwU9Q=
 github.com/FloatTech/rendercard v0.2.4-0.20260404155919-1fede0bcd22b h1:xo68n707/B8tdsqQz3FB5YaBXd/X5FUeQqUgXKdtOPU=
 github.com/FloatTech/rendercard v0.2.4-0.20260404155919-1fede0bcd22b/go.mod h1:uiJSiGWuED77DtPypOr3ewNfqZbwC2A+ZnlAPqvxK/E=
 github.com/FloatTech/sqlite v1.7.2 h1:b8COegNLSzofzOyARsVwSbz9OOzWEa8IElsTlx1TBLw=
