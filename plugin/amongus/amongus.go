@@ -2,8 +2,8 @@
 package amongus
 
 import (
-	"net/url"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -12,13 +12,14 @@ import (
 	fcext "github.com/FloatTech/floatbox/ctxext"
 	"github.com/FloatTech/floatbox/web"
 	sql "github.com/FloatTech/sqlite"
-	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/img/text"
 	"github.com/tidwall/gjson"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
+
+	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 )
 
 const (
@@ -135,7 +136,7 @@ func init() {
 			totalStats := result.Get("data.totalStats")
 			averageKills := totalStats.Get("averageKills").Float()
 			averageTasksCompleted := totalStats.Get("averageTasksCompleted").Float()
-			completedAllTasksRate := totalStats.Get("completedAllTasksRate").Float()
+			taskCompletionRate := totalStats.Get("taskCompletionRate").Float()
 			totalMatches := totalStats.Get("totalMatches").Int()
 			winRate := totalStats.Get("winRate").Float()
 
@@ -147,7 +148,7 @@ func init() {
 			sb.WriteString(fmt.Sprintf("  总胜率:        %.2f%%\n", winRate))
 			sb.WriteString(fmt.Sprintf("  平均击杀:      %.2f\n", averageKills))
 			sb.WriteString(fmt.Sprintf("  平均任务完成:  %.2f\n", averageTasksCompleted))
-			sb.WriteString(fmt.Sprintf("  总任务完成率:  %.2f%%\n", completedAllTasksRate))
+			sb.WriteString(fmt.Sprintf("  总任务完成率:  %.2f%%\n", taskCompletionRate))
 			sb.WriteString("\n════════════════════")
 
 			// 渲染为图片并发送
