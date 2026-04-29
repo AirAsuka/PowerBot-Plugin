@@ -16,6 +16,10 @@ import (
 
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/web"
+<<<<<<< HEAD
+=======
+	"github.com/FloatTech/gg/factory"
+>>>>>>> cd4090c7bfc5dace579da4bcd08c28ac9c8138de
 	ctrl "github.com/FloatTech/zbpctrl"
 	control "github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
@@ -139,6 +143,7 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
+<<<<<<< HEAD
 		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Image("file:///"+picPath))
 	})
 
@@ -147,6 +152,12 @@ func init() {
 		fileInfo, ok := lotsList[lotsName]
 		if !ok {
 			ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("才...才没有", lotsName, "gif签啦~")))
+=======
+		// 生成图片
+		data, err := factory.ToBytes(lotsImg)
+		if err != nil {
+			ctx.SendChain(message.Text("ERROR: ", err))
+>>>>>>> cd4090c7bfc5dace579da4bcd08c28ac9c8138de
 			return
 		}
 		if fileInfo.lotsType != "gif" {
