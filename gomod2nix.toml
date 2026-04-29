@@ -213,6 +213,10 @@ schema = 3
     version = 'v0.0.20'
     hash = 'sha256-qhw9hWtU5wnyFyuMbKx+7RB8ckQaFQ8D+8GKPkN3HHQ='
 
+  [mod.'github.com/mattn/go-sqlite3']
+    version = 'v1.14.0'
+    hash = 'sha256-YRPlbZW01K3cJXfI/PvLO2HIpn4Nw/kdUXwNxKmfE8A='
+
   [mod.'github.com/mmcdole/gofeed']
     version = 'v1.3.0'
     hash = 'sha256-GHpqGZvNg+3RSIkVKXrWg6/e8dJD8Y5v2Sx6MzmRlQ0='
