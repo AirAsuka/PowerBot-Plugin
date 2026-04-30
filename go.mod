@@ -55,7 +55,6 @@ require (
 )
 
 require (
-	github.com/FloatTech/imgfactory v0.2.1 // indirect
 	github.com/PuerkitoBio/goquery v1.8.0 // indirect
 	github.com/adamzy/cedar-go v0.0.0-20170805034717-80a9c64b256d // indirect
 	github.com/ajstarks/svgo v0.0.0-20200320125537-f189e35d30ca // indirect
