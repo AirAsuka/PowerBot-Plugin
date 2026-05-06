@@ -216,9 +216,10 @@ import (
 )
 
 type zbpcfg struct {
-	Z zero.Config        `json:"zero"`
-	W []*driver.WSClient `json:"ws"`
-	S []*driver.WSServer `json:"wss"`
+	Z               zero.Config        `json:"zero"`
+	W               []*driver.WSClient `json:"ws"`
+	S               []*driver.WSServer `json:"wss"`
+	ForceBase64File bool               `json:"force_base64_file"`
 }
 
 var config zbpcfg
@@ -249,6 +250,7 @@ func init() {
 	rsz := flag.Uint("r", 4096, "Receiving buffer ring size.")
 	maxpt := flag.Uint("x", 4, "Max process time (min).")
 	markmsg := flag.Bool("m", false, "Don't mark message as read automatically")
+	fb64 := flag.Bool("fb64", false, "Force to send base64 file.")
 	flag.BoolVar(&file.SkipOriginal, "mirror", false, "Use mirrored lazy data at first")
 
 	flag.Parse()
@@ -312,6 +314,7 @@ func init() {
 		MarkMessage:    !*markmsg,
 		Driver:         []zero.Driver{config.W[0]},
 	}
+	config.ForceBase64File = *fb64
 
 	if *save != "" {
 		f, err := os.Create(*save)

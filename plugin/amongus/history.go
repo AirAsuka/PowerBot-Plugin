@@ -1,8 +1,10 @@
 package amongus
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"image/png"
 	"net/url"
 	"strconv"
 	"strings"
@@ -11,7 +13,6 @@ import (
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/web"
 	"github.com/FloatTech/gg"
-	"github.com/FloatTech/imgfactory"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/img/text"
 	"github.com/tidwall/gjson"
@@ -803,5 +804,10 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 		}
 	}
 
-	return imgfactory.ToBytes(c.Image())
+	var buf bytes.Buffer
+	err = png.Encode(&buf, c.Image())
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

@@ -1,13 +1,12 @@
 module github.com/FloatTech/ZeroBot-Plugin
 
-go 1.24.2
+go 1.26.1
 
 require (
 	github.com/FloatTech/AnimeAPI v1.7.1-0.20251028071248-0c948e3db65c
 	github.com/FloatTech/floatbox v0.0.0-20251002074805-f95cbc7edb31
-	github.com/FloatTech/gg v1.1.3
-	github.com/FloatTech/imgfactory v0.2.2-0.20230413152719-e101cc3606ef
-	github.com/FloatTech/rendercard v0.2.3
+	github.com/FloatTech/gg v1.1.4-0.20260404155637-671db2feeebb
+	github.com/FloatTech/rendercard v0.2.4-0.20260404155919-1fede0bcd22b
 	github.com/FloatTech/sqlite v1.7.2
 	github.com/FloatTech/ttl v0.0.0-20250224045156-012b1463287d
 	github.com/FloatTech/zbpctrl v1.7.1
@@ -36,7 +35,6 @@ require (
 	github.com/jozsefsallai/gophersauce v1.0.1
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/liuzl/gocc v0.0.0-20231231122217-0372e1059ca5
-	github.com/mattn/go-sqlite3 v1.14.0
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/mroth/weightedrand v1.0.0
 	github.com/pkg/errors v0.9.1
@@ -46,21 +44,23 @@ require (
 	github.com/wcharczuk/go-chart/v2 v2.1.2
 	github.com/wdvxdr1123/ZeroBot v1.8.3-0.20260117102541-393033a35adb
 	gitlab.com/gomidi/midi/v2 v2.3.18
-	golang.org/x/image v0.34.0
+	golang.org/x/image v0.38.0
 	golang.org/x/sys v0.39.0
-	golang.org/x/text v0.32.0
+	golang.org/x/text v0.35.0
 )
 
 require (
+	github.com/FloatTech/imgfactory v0.2.2-0.20230413152719-e101cc3606ef // indirect
 	github.com/PuerkitoBio/goquery v1.8.0 // indirect
 	github.com/adamzy/cedar-go v0.0.0-20170805034717-80a9c64b256d // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/antchfx/xpath v1.3.5 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/ebitengine/purego v0.9.1 // indirect
+	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/ericpauley/go-quantize v0.0.0-20200331213906-ae555eb2afa4 // indirect
 	github.com/fumiama/go-simple-protobuf v0.2.0 // indirect
 	github.com/fumiama/gofastTEA v0.1.3 // indirect
+	github.com/fumiama/gozel v0.0.0-20260329105205-a95fde52433a // indirect
 	github.com/fumiama/imgsz v0.0.4 // indirect
 	github.com/fumiama/orbyte v0.0.0-20251002065953-3bb358367eb5 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
@@ -97,3 +97,5 @@ require (
 replace modernc.org/sqlite => github.com/fumiama/sqlite3 v1.29.10-simp
 
 replace modernc.org/libc => github.com/fumiama/libc v0.0.0-20240530081950-6f6d8586b5c5
+
+replace github.com/FloatTech/imgfactory => /tmp/localimgfactory/github.com/FloatTech/imgfactory

@@ -51,7 +51,9 @@ func init() {
 	imagesDir = file.BOTPATH + "/" + engine.DataFolder() + "images"
 
 	loadData()
-	os.MkdirAll(imagesDir, 0755)
+	if err := os.MkdirAll(imagesDir, 0755); err != nil {
+		fmt.Println("[keywordimg] 创建目录失败:", err)
+	}
 
 	// 关键词检测
 	engine.OnMessage(func(ctx *zero.Ctx) bool {
@@ -106,7 +108,10 @@ func init() {
 
 			filename := fmt.Sprintf("%s.%s", keyword, format)
 			localPath := filepath.Join(imagesDir, filename)
-			os.WriteFile(localPath, picData, 0644)
+			if err := os.WriteFile(localPath, picData, 0644); err != nil {
+				ctx.SendChain(message.Text("保存失败: ", err))
+				return
+			}
 			fmt.Println("[keywordimg] 保存到:", localPath, "大小:", len(picData))
 
 			RWMutex.Lock()
@@ -158,7 +163,9 @@ func init() {
 func loadData() {
 	loadOnce.Do(func() {
 		dir := filepath.Dir(dataFile)
-		os.MkdirAll(dir, 0755)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return
+		}
 		data, err := os.ReadFile(dataFile)
 		if err != nil {
 			return
@@ -183,8 +190,14 @@ func saveData() {
 	}
 	data, _ := json.Marshal(keywords)
 	dir := filepath.Dir(dataFile)
-	os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return
+	}
 	tmpFile := dataFile + ".tmp"
-	os.WriteFile(tmpFile, data, 0644)
-	os.Rename(tmpFile, dataFile)
+	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
+		return
+	}
+	if err := os.Rename(tmpFile, dataFile); err != nil {
+		return
+	}
 }
