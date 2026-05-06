@@ -23,7 +23,7 @@ var platformMap = map[string]func(string) (message.Segment, error){
 	"酷狗": getKugouMusic,
 	"网易": getNeteaseMusic,
 	"qq": getQQMusic,
-	"":   getKuwoMusic, // 默认点歌指向酷我
+	"":   getKuwoMusic, // 默认点歌指向网易
 }
 
 func init() {
@@ -49,6 +49,14 @@ func init() {
 			}
 
 			seg, err := processFunc(keyword)
+			if err != nil && platformPrefix == "" {
+				// 默认点歌失败，尝试网易点歌
+				seg, err = getNeteaseMusic(keyword)
+				if err != nil {
+					// 网易点歌也失败，尝试QQ点歌
+					seg, err = getQQMusic(keyword)
+				}
+			}
 			if err != nil {
 				ctx.SendChain(message.Text("点歌失败：", err))
 				return

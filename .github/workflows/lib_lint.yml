@@ -47,6 +47,7 @@ jobs:
         with:
           version: latest
           install-mode: goinstall
+          args: --count=1 --no-config
 
       - name: Commit back
         if: ${{ inputs.commit_back }}

@@ -15,6 +15,8 @@ import (
 )
 
 // mo 摸
+//
+//nolint:unused
 func mo(cc *context, value ...string) (string, error) {
 	_ = value
 	var wg sync.WaitGroup

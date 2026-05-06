@@ -3,11 +3,13 @@ package aichat
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"strings"
 
 	"github.com/RomiChan/syncx"
 	"github.com/fumiama/deepinfra"
+	"github.com/fumiama/deepinfra/model"
 	goba "github.com/fumiama/go-onebot-agent"
 	"github.com/sirupsen/logrus"
 
@@ -58,16 +60,46 @@ func init() {
 			logrus.Infoln("[aichat] skip agent for ctx has not been hooked by agent")
 			return false
 		}
-		if !(ctx.ExtractPlainText() != "" &&
-			(!stor.NoReplyAt() || (stor.NoReplyAt() && !ctx.Event.IsToMe))) {
+		plainText := ctx.ExtractPlainText()
+		if plainText == "" {
 			return false
 		}
-		rate := stor.Rate()
-		if !ctx.Event.IsToMe && rand.Intn(100) >= int(rate) {
-			return false
-		}
+		gid := ctx.Event.GroupID
+		isPrivate := gid == 0
+
+		// 检查消息中是否真的@了机器人（通过原始消息判断）
+		// ZeroBot 会将 [CQ:at,qq=xxx] 格式的@转换为 IsToMe=true，但需要防止误判
+		isReallyToMe := false
 		if ctx.Event.IsToMe {
+			// 检查原始消息是否包含 [CQ:at,qq=机器人QQ]
+			rawMsg := ctx.Event.RawMessage
+			// logrus.Infoln("[aichat] @检测: RawMessage=", rawMsg, "selfID=", ctx.Event.SelfID)
+			if strings.Contains(rawMsg, "[CQ:at,qq="+fmt.Sprint(ctx.Event.SelfID)) {
+				isReallyToMe = true
+			}
+		}
+		// logrus.Infoln("[aichat] @消息检测: isReallyToMe=", isReallyToMe, "NoReplyAt=", stor.NoReplyAt())
+
+		if isPrivate {
+			// 私聊：每条都响应
 			ctx.Block()
+			return true
+		}
+
+		// 群聊
+		if isReallyToMe {
+			// 真正@了机器人：检查 NoReplyAt 配置
+			if stor.NoReplyAt() {
+				return false
+			}
+			ctx.Block()
+			return true
+		}
+
+		// 普通消息：检查概率
+		rate := stor.Rate()
+		if rate == 0 || rand.Intn(100) >= int(rate) {
+			return false
 		}
 		return true
 	}).SetBlock(false).Handle(func(ctx *zero.Ctx) {
@@ -152,7 +184,40 @@ func init() {
 			logrus.Warnln("ERROR: ", err)
 			return
 		}
-		data, err := x.Request(chat.GetChatContext(mod, gid, chat.AC.SystemP, bool(chat.AC.NoSystemP)))
+
+		// 提取消息中的图片URL
+		var imageURLs []string
+		for _, seg := range ctx.Event.Message {
+			if seg.Type == "image" {
+				if url := seg.Data["url"]; url != "" {
+					imageURLs = append(imageURLs, url)
+				}
+			}
+		}
+
+		var data string
+		if len(imageURLs) > 0 && chat.AC.ImageAPI != "" && chat.AC.ImageModelName != "" {
+			// 识图模式：发送图片+文本
+			logrus.Debugln("[aichat] 识图模式, 图片数量:", len(imageURLs))
+			imgAPI := deepinfra.NewAPI(chat.AC.ImageAPI, string(chat.AC.ImageKey))
+			imgMod, imgErr := chat.AC.ImageType.Protocol(chat.AC.ImageModelName, temperature, topp, maxn)
+			if imgErr != nil {
+				logrus.Warnln("ERROR: ", imgErr)
+				return
+			}
+			contents := make([]model.Content, 0, len(imageURLs)+1)
+			for _, url := range imageURLs {
+				contents = append(contents, model.NewContentImageURL(url))
+			}
+			plainText := ctx.ExtractPlainText()
+			if plainText != "" {
+				contents = append(contents, model.NewContentText(plainText))
+			}
+			data, err = imgAPI.Request(imgMod.User(contents...))
+		} else {
+			// 普通文本聊天
+			data, err = x.Request(chat.GetChatContext(mod, gid, chat.AC.SystemP, bool(chat.AC.NoSystemP)))
+		}
 		if err != nil {
 			logrus.Warnln("[aichat] post err:", err)
 			return

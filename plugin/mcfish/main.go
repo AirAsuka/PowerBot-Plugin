@@ -25,8 +25,16 @@ type fishdb struct {
 	db sql.Sqlite
 }
 
+// groupBan 群禁用钓鱼记录
+type groupBan struct {
+	GroupID int64
+}
+
 // FishLimit 钓鱼次数上限
-const FishLimit = 50
+const FishLimit = 100
+
+// StorePoleLimit 商店可收购鱼竿条目上限
+const StorePoleLimit = 25
 
 // version 规则版本号
 const version = "5.6.2"
@@ -111,18 +119,19 @@ type buffInfo struct {
 }
 
 var (
-	articlesInfo  = jsonInfo{}                            // 物品信息
-	thingList     = make([]string, 0, 100)                // 竿列表
-	poleList      = make([]string, 0, 10)                 // 竿列表
-	fishList      = make([]string, 0, 10)                 // 鱼列表
-	treasureList  = make([]string, 0, 10)                 // 鱼列表
-	wasteList     = make([]string, 0, 10)                 // 垃圾列表
-	probabilities = make(map[string]probabilityLimit, 50) // 概率分布
-	priceList     = make(map[string]int, 50)              // 价格分布
-	durationList  = make(map[string]int, 50)              // 装备耐久分布
-	discountList  = make(map[string]int, 50)              // 价格波动信息
-	enchantLevel  = []string{"0", "Ⅰ", "Ⅱ", "Ⅲ"}
-	dbdata        fishdb
+	articlesInfo   = jsonInfo{}                            // 物品信息
+	thingList      = make([]string, 0, 100)                // 竿列表
+	poleList       = make([]string, 0, 10)                 // 竿列表
+	fishList       = make([]string, 0, 10)                 // 鱼列表
+	treasureList   = make([]string, 0, 10)                 // 鱼列表
+	wasteList      = make([]string, 0, 10)                 // 垃圾列表
+	probabilities  = make(map[string]probabilityLimit, 50) // 概率分布
+	priceList      = make(map[string]int, 50)              // 价格分布
+	durationList   = make(map[string]int, 50)              // 装备耐久分布
+	discountList   = make(map[string]int, 50)              // 价格波动信息
+	enchantLevel   = []string{"0", "Ⅰ", "Ⅱ", "Ⅲ"}
+	dbdata         fishdb
+	disabledGroups sync.Map // 禁用钓鱼的群 map[int64]struct{}
 )
 
 var (
@@ -142,7 +151,9 @@ var (
 			"- 合成[xx竿|三叉戟]\n" +
 			"- 出售所有垃圾\n" +
 			"- 当前装备概率明细\n" +
-			"- 查看钓鱼规则\n",
+			"- 查看钓鱼规则\n" +
+			"- 禁用钓鱼(管理员)\n" +
+			"- 启用钓鱼(管理员)\n",
 		PublicDataFolder: "McFish",
 	}).ApplySingle(ctxext.DefaultSingle)
 	getdb = fcext.DoOnceOnSuccess(func(ctx *zero.Ctx) bool {
@@ -152,9 +163,50 @@ var (
 			ctx.SendChain(message.Text("[ERROR at main.go.1]:", err))
 			return false
 		}
+		// 加载禁用群列表
+		err = dbdata.loadDisabledGroups()
+		if err != nil {
+			ctx.SendChain(message.Text("[ERROR at main.go.2]:", err))
+			return false
+		}
 		return true
 	})
 )
+
+// groupNotDisabled 检查当前群是否未被禁用钓鱼
+func groupNotDisabled(ctx *zero.Ctx) bool {
+	gid := ctx.Event.GroupID
+	if gid == 0 {
+		return true // 私聊不受限制
+	}
+	_, disabled := disabledGroups.Load(gid)
+	return !disabled
+}
+
+func init() {
+	// 禁用钓鱼
+	engine.OnFullMatch("禁用钓鱼", getdb, zero.OnlyGroup, zero.AdminPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		gid := ctx.Event.GroupID
+		err := dbdata.setGroupBan(gid)
+		if err != nil {
+			ctx.SendChain(message.Text("[ERROR]:", err))
+			return
+		}
+		disabledGroups.Store(gid, struct{}{})
+		ctx.SendChain(message.Text("已在本群禁用钓鱼功能"))
+	})
+	// 启用钓鱼
+	engine.OnFullMatch("启用钓鱼", getdb, zero.OnlyGroup, zero.AdminPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		gid := ctx.Event.GroupID
+		err := dbdata.removeGroupBan(gid)
+		if err != nil {
+			ctx.SendChain(message.Text("[ERROR]:", err))
+			return
+		}
+		disabledGroups.Delete(gid)
+		ctx.SendChain(message.Text("已在本群启用钓鱼功能"))
+	})
+}
 
 func init() {
 	// go func() {

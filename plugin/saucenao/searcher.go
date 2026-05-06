@@ -218,7 +218,7 @@ func init() { // 插件主体
 			option := ctx.State["regex_matched"].([]string)[1]
 			c, ok := ctx.State["manager"].(*ctrl.Control[*zero.Ctx])
 			if !ok {
-				ctx.SendChain(message.Text("找不到服务!"))
+				// ctx.SendChain(message.Text("找不到服务!"))
 				return
 			}
 			data := c.GetData(ctx.Event.GroupID)
