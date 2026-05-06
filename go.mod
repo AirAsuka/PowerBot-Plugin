@@ -97,3 +97,5 @@ require (
 replace modernc.org/sqlite => github.com/fumiama/sqlite3 v1.29.10-simp
 
 replace modernc.org/libc => github.com/fumiama/libc v0.0.0-20240530081950-6f6d8586b5c5
+
+replace github.com/FloatTech/gg => github.com/FloatTech/gg v1.1.0
