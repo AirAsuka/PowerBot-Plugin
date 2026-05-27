@@ -2,6 +2,14 @@
 package aichatcfg
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
@@ -45,6 +53,72 @@ var (
 	})
 )
 
+// BackendURL Python AI Backend 地址
+var BackendURL = "http://127.0.0.1:8000"
+
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+// sessionConfigPayload 同步到后端的会话配置
+type sessionConfigPayload struct {
+	Temperature      float64 `json:"temperature"`
+	ReplyProbability int     `json:"reply_probability"`
+	SystemPromptID   *string `json:"system_prompt_id"`
+	ModelBackendID   *string `json:"model_backend_id"`
+	UseAgent         bool    `json:"use_agent"`
+	MaxTokens        int     `json:"max_tokens"`
+	TopP             float64 `json:"top_p"`
+	UseRAG           bool    `json:"use_rag"`
+}
+
+// syncSessionConfig 将当前会话配置同步到 Python AI Backend
+func syncSessionConfig(ctx *zero.Ctx) {
+	gid := ctx.Event.GroupID
+	if gid == 0 {
+		gid = -ctx.Event.UserID
+	}
+	sessionID := fmt.Sprintf("group_%d", gid)
+
+	stor, err := chat.NewStorage(ctx, gid)
+	if err != nil {
+		logrus.Warnln("[aichatcfg] sync: cannot get storage:", err)
+		return
+	}
+
+	topp, maxn := chat.AC.MParams()
+	cfg := sessionConfigPayload{
+		Temperature:      float64(stor.Temp()) / 100.0,
+		ReplyProbability: int(stor.Rate()),
+		UseAgent:         !stor.NoAgent(),
+		MaxTokens:        int(maxn),
+		TopP:             float64(topp),
+		UseRAG:           false,
+	}
+
+	body, err := json.Marshal(cfg)
+	if err != nil {
+		logrus.Warnln("[aichatcfg] sync marshal error:", err)
+		return
+	}
+	url := strings.TrimRight(BackendURL, "/") + "/api/v1/sessions/" + sessionID + "/config"
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(body))
+	if err != nil {
+		logrus.Warnln("[aichatcfg] sync create request error:", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		logrus.Warnln("[aichatcfg] sync failed:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(resp.Body)
+		logrus.Warnln("[aichatcfg] sync returned", resp.StatusCode, ":", string(respBody))
+	}
+}
+
 func init() {
 	en.UsePreHandler(chat.EnsureConfig, func(ctx *zero.Ctx) bool {
 		k := zero.StateKeyPrefixKeep + "aichatcfg_stor__"
@@ -66,7 +140,7 @@ func init() {
 	en.OnPrefix("设置AI聊天触发概率", zero.AdminPermission).SetBlock(true).
 		Handle(ctxext.NewStorageSaveBitmapHandler(chat.BitmapRate, 0, 100))
 	en.OnPrefix("设置AI聊天温度", zero.AdminPermission).SetBlock(true).
-		Handle(ctxext.NewStorageSaveBitmapHandler(chat.BitmapTemp, 0, 100))
+		Handle(ctxext.NewStorageSaveBitmapHandler(chat.BitmapTemp, 0, 100), syncSessionConfig)
 	en.OnPrefix("设置AI聊天接口类型", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
 		Handle(chat.NewExtraSetModelType(&chat.AC.Type))
 	en.OnPrefix("设置AI聊天识图接口类型", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
@@ -142,11 +216,11 @@ func init() {
 	en.OnRegex("^设置AI聊天(不)?支持系统提示词$", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
 		Handle(chat.NewExtraSetBool(&chat.AC.NoSystemP))
 	en.OnRegex("^设置AI聊天(不)?使用Agent模式$", zero.SuperUserPermission).SetBlock(true).
-		Handle(ctxext.NewStorageSaveBoolHandler(chat.BitmapNagt))
+		Handle(ctxext.NewStorageSaveBoolHandler(chat.BitmapNagt), syncSessionConfig)
 	en.OnPrefix("设置AI聊天最大长度", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetUint(&chat.AC.MaxN))
+		Handle(chat.NewExtraSetUint(&chat.AC.MaxN), syncSessionConfig)
 	en.OnPrefix("设置AI聊天TopP", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetFloat32(&chat.AC.TopP))
+		Handle(chat.NewExtraSetFloat32(&chat.AC.TopP), syncSessionConfig)
 	en.OnRegex("^设置AI聊天(不)?以AI语音输出$", zero.AdminPermission).SetBlock(true).
 		Handle(ctxext.NewStorageSaveBoolHandler(chat.BitmapNrec))
 	en.OnFullMatch("查看AI聊天配置", chat.EnsureConfig, zero.SuperUserPermission).SetBlock(true).

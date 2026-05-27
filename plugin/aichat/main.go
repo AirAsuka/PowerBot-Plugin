@@ -1,16 +1,16 @@
-// Package aichat 大模型聊天和Agent
+// Package aichat 大模型聊天 - 对接 PowerBot AI Backend
 package aichat
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"strings"
+	"time"
 
-	"github.com/RomiChan/syncx"
-	"github.com/fumiama/deepinfra"
-	"github.com/fumiama/deepinfra/model"
-	goba "github.com/fumiama/go-onebot-agent"
 	"github.com/sirupsen/logrus"
 
 	zero "github.com/wdvxdr1123/ZeroBot"
@@ -25,7 +25,6 @@ import (
 )
 
 var (
-	// en data [8 temp] [8 rate] LSB
 	en = control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
 		Extra:            control.ExtraFromString("aichat"),
@@ -40,24 +39,45 @@ var (
 			}
 			return ctx.Event.GroupID
 		}),
-		// no post option, silently quit
 	))
 )
 
 var (
 	fastfailnorecord = false
+	// BackendURL Python AI Backend 地址
+	BackendURL = "http://127.0.0.1:8000"
 )
 
+// logClient 用于 fire-and-forget 消息日志的轻量 HTTP 客户端
+var logClient = &http.Client{Timeout: 5 * time.Second}
+
+// logMessageAsync 火后即忘：将消息记录到后端作为上下文
+func logMessageAsync(sessionID, userID, userName, plainText string, images []string) {
+	go func() {
+		body, _ := json.Marshal(ChatRequest{
+			SessionID: sessionID,
+			UserID:    userID,
+			UserName:  userName,
+			Message:   plainText,
+			Images:    images,
+		})
+		url := strings.TrimRight(BackendURL, "/") + "/api/v1/messages/log"
+		resp, err := logClient.Post(url, "application/json", bytes.NewReader(body))
+		if err != nil {
+			logrus.Debugln("[aichat] log message err:", err)
+			return
+		}
+		resp.Body.Close()
+	}()
+}
+
 func init() {
+	aiClient := NewAIChatClient(BackendURL)
+
 	en.OnMessage(chat.EnsureConfig, func(ctx *zero.Ctx) bool {
 		stor, ok := ctx.State[zero.StateKeyPrefixKeep+"aichatcfg_stor__"].(chat.Storage)
 		if !ok {
-			logrus.Warnln("ERROR: cannot get stor")
-			return false
-		}
-		mp := ctx.State[control.StateKeySyncxState].(*syncx.Map[string, any])
-		if _, ok := mp.Load(chat.StateKeyAgentHooked); !ok && !stor.NoAgent() {
-			logrus.Infoln("[aichat] skip agent for ctx has not been hooked by agent")
+			logrus.Warnln("[aichat] ERROR: cannot get stor")
 			return false
 		}
 		plainText := ctx.ExtractPlainText()
@@ -67,125 +87,12 @@ func init() {
 		gid := ctx.Event.GroupID
 		isPrivate := gid == 0
 
-		// 检查消息中是否真的@了机器人（通过原始消息判断）
-		// ZeroBot 会将 [CQ:at,qq=xxx] 格式的@转换为 IsToMe=true，但需要防止误判
-		isReallyToMe := false
-		if ctx.Event.IsToMe {
-			// 检查原始消息是否包含 [CQ:at,qq=机器人QQ]
-			rawMsg := ctx.Event.RawMessage
-			// logrus.Infoln("[aichat] @检测: RawMessage=", rawMsg, "selfID=", ctx.Event.SelfID)
-			if strings.Contains(rawMsg, "[CQ:at,qq="+fmt.Sprint(ctx.Event.SelfID)) {
-				isReallyToMe = true
-			}
-		}
-		// logrus.Infoln("[aichat] @消息检测: isReallyToMe=", isReallyToMe, "NoReplyAt=", stor.NoReplyAt())
-
-		if isPrivate {
-			// 私聊：每条都响应
-			ctx.Block()
-			return true
-		}
-
-		// 群聊
-		if isReallyToMe {
-			// 真正@了机器人：检查 NoReplyAt 配置
-			if stor.NoReplyAt() {
-				return false
-			}
-			ctx.Block()
-			return true
-		}
-
-		// 普通消息：检查概率
-		rate := stor.Rate()
-		if rate == 0 || rand.Intn(100) >= int(rate) {
-			return false
-		}
-		return true
-	}).SetBlock(false).Handle(func(ctx *zero.Ctx) {
-		gid := ctx.Event.GroupID
+		sessionID := fmt.Sprintf("group_%d", gid)
 		if gid == 0 {
-			gid = -ctx.Event.UserID
-		}
-		stor := ctx.State[zero.StateKeyPrefixKeep+"aichatcfg_stor__"].(chat.Storage)
-		temperature := stor.Temp()
-		topp, maxn := chat.AC.MParams()
-		mp := ctx.State[control.StateKeySyncxState].(*syncx.Map[string, any])
-
-		logrus.Debugln("[aichat] agent mode test: noagent", stor.NoAgent(), "hasapi", chat.AC.AgentAPI != "", "hasmodel", chat.AC.AgentModelName != "")
-		if !stor.NoAgent() && chat.AC.AgentAPI != "" && chat.AC.AgentModelName != "" && chat.AC.Key != "" {
-			logrus.Debugln("[aichat] enter agent mode")
-			x := deepinfra.NewAPI(chat.AC.AgentAPI, string(chat.AC.AgentKey))
-			mod, err := chat.AC.Type.Protocol(chat.AC.AgentModelName, temperature, topp, maxn)
-			if err != nil {
-				logrus.Warnln("ERROR: ", err)
-				return
-			}
-			role := goba.PermRoleUser
-			if zero.AdminPermission(ctx) {
-				role = goba.PermRoleAdmin
-				if zero.SuperUserPermission(ctx) {
-					role = goba.PermRoleOwner
-				}
-			}
-			c, ok := ctx.State["manager"].(*ctrl.Control[*zero.Ctx])
-			if !ok {
-				logrus.Warnln("ERROR: cannot get ctrl mamager")
-			}
-			ag := chat.AgentOf(ctx.Event.SelfID, c.Service)
-			logrus.Debugln("[aichat] got agent")
-			if chat.AC.ImageAPI != "" && !ag.CanViewImage() {
-				mod, err := chat.AC.ImageType.Protocol(chat.AC.ImageModelName, temperature, topp, maxn)
-				if err != nil {
-					logrus.Warnln("ERROR: ", err)
-					return
-				}
-				ag.SetViewImageAPI(deepinfra.NewAPI(chat.AC.ImageAPI, string(chat.AC.ImageKey)), mod)
-				logrus.Debugln("[aichat] agent set img")
-			}
-			ctx.NoTimeout()
-			logrus.Debugln("[aichat] agent set no timeout")
-			hasresp := false
-			for i := 0; i < 8; i++ { // 最大运行 8 轮因为问答上下文只有 16
-				reqs := chat.CallAgent(ag, zero.SuperUserPermission(ctx), i+1, x, mod, gid, role)
-				if len(reqs) == 0 {
-					logrus.Debugln("[aichat] agent call got empty response")
-					break
-				}
-				hasresp = true
-				mp.Store(chat.StateKeyAgentTriggered, struct{}{})
-				for _, req := range reqs {
-					if req.Action == goba.SVM { // is a fake action
-						continue
-					}
-					logrus.Debugln("[chat] agent triggered", gid, "add requ:", &req)
-					ag.AddRequest(gid, &req)
-					rsp := ctx.CallAction(req.Action, req.Params)
-					logrus.Debugln("[chat] agent triggered", gid, "add resp:", &rsp)
-					ag.AddResponse(gid, &goba.APIResponse{
-						Status:  rsp.Status,
-						Data:    json.RawMessage(rsp.Data.Raw),
-						Message: rsp.Message,
-						Wording: rsp.Wording,
-						RetCode: rsp.RetCode,
-					})
-				}
-			}
-			if hasresp {
-				return
-			}
-			// no response, fall back to normal chat
-			logrus.Debugln("[aichat] agent fell back to normal chat")
+			sessionID = fmt.Sprintf("group_%d", -ctx.Event.UserID)
 		}
 
-		x := deepinfra.NewAPI(chat.AC.API, string(chat.AC.Key))
-		mod, err := chat.AC.Type.Protocol(chat.AC.ModelName, temperature, topp, maxn)
-		if err != nil {
-			logrus.Warnln("ERROR: ", err)
-			return
-		}
-
-		// 提取消息中的图片URL
+		// 提取图片URL（用于日志和请求）
 		var imageURLs []string
 		for _, seg := range ctx.Event.Message {
 			if seg.Type == "image" {
@@ -195,66 +102,105 @@ func init() {
 			}
 		}
 
-		var data string
-		if len(imageURLs) > 0 && chat.AC.ImageAPI != "" && chat.AC.ImageModelName != "" {
-			// 识图模式：发送图片+文本
-			logrus.Debugln("[aichat] 识图模式, 图片数量:", len(imageURLs))
-			imgAPI := deepinfra.NewAPI(chat.AC.ImageAPI, string(chat.AC.ImageKey))
-			imgMod, imgErr := chat.AC.ImageType.Protocol(chat.AC.ImageModelName, temperature, topp, maxn)
-			if imgErr != nil {
-				logrus.Warnln("ERROR: ", imgErr)
-				return
+		// 检查是否真的 @ 了机器人
+		isReallyToMe := false
+		if ctx.Event.IsToMe {
+			rawMsg := ctx.Event.RawMessage
+			if strings.Contains(rawMsg, "[CQ:at,qq="+fmt.Sprint(ctx.Event.SelfID)) {
+				isReallyToMe = true
 			}
-			contents := make([]model.Content, 0, len(imageURLs)+1)
-			for _, url := range imageURLs {
-				contents = append(contents, model.NewContentImageURL(url))
-			}
-			plainText := ctx.ExtractPlainText()
-			if plainText != "" {
-				contents = append(contents, model.NewContentText(plainText))
-			}
-			data, err = imgAPI.Request(imgMod.User(contents...))
-		} else {
-			// 普通文本聊天
-			data, err = x.Request(chat.GetChatContext(mod, gid, chat.AC.SystemP, bool(chat.AC.NoSystemP)))
 		}
+
+		trigger := false
+		if isPrivate {
+			trigger = true
+		} else if isReallyToMe {
+			trigger = !stor.NoReplyAt()
+		} else {
+			rate := stor.Rate()
+			trigger = rate > 0 && rand.Intn(100) < int(rate)
+		}
+
+		if !trigger {
+			// 不触发回复，但记录此消息作为后续对话的上下文
+			logMessageAsync(sessionID, fmt.Sprint(ctx.Event.UserID),
+				ctx.CardOrNickName(ctx.Event.UserID), plainText, imageURLs)
+			return false
+		}
+
+		ctx.Block()
+		return true
+	}).SetBlock(false).Handle(func(ctx *zero.Ctx) {
+		gid := ctx.Event.GroupID
+		if gid == 0 {
+			gid = -ctx.Event.UserID
+		}
+
+		// 提取图片URL
+		var imageURLs []string
+		for _, seg := range ctx.Event.Message {
+			if seg.Type == "image" {
+				if url := seg.Data["url"]; url != "" {
+					imageURLs = append(imageURLs, url)
+				}
+			}
+		}
+
+		plainText := ctx.ExtractPlainText()
+		sessionID := fmt.Sprintf("group_%d", gid)
+
+		req := &ChatRequest{
+			SessionID: sessionID,
+			UserID:    fmt.Sprint(ctx.Event.UserID),
+			UserName:  ctx.CardOrNickName(ctx.Event.UserID),
+			Message:   plainText,
+			Images:    imageURLs,
+			UseRAG:    false,
+		}
+
+		ctxNoTimeout, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+
+		resp, err := aiClient.Chat(ctxNoTimeout, req)
 		if err != nil {
-			logrus.Warnln("[aichat] post err:", err)
+			logrus.Warnln("[aichat] backend error:", err)
 			return
 		}
 
-		txt := chat.Sanitize(strings.Trim(data, "\n 　"))
-		if len(txt) > 0 {
-			chat.AddChatReply(gid, txt)
-			nick := zero.BotConfig.NickName[rand.Intn(len(zero.BotConfig.NickName))]
-			txt = strings.ReplaceAll(txt, "{name}", ctx.CardOrNickName(ctx.Event.UserID))
-			txt = strings.ReplaceAll(txt, "{me}", nick)
-			id := any(nil)
-			if ctx.Event.IsToMe {
-				id = ctx.Event.MessageID
+		txt := strings.Trim(resp.Reply, "\n 　")
+		if len(txt) == 0 {
+			return
+		}
+
+		nick := zero.BotConfig.NickName[rand.Intn(len(zero.BotConfig.NickName))]
+		txt = strings.ReplaceAll(txt, "{name}", ctx.CardOrNickName(ctx.Event.UserID))
+		txt = strings.ReplaceAll(txt, "{me}", nick)
+
+		stor := ctx.State[zero.StateKeyPrefixKeep+"aichatcfg_stor__"].(chat.Storage)
+		id := any(nil)
+		if ctx.Event.IsToMe {
+			id = ctx.Event.MessageID
+		}
+		for _, t := range strings.Split(txt, "{segment}") {
+			if t == "" {
+				continue
 			}
-			for _, t := range strings.Split(txt, "{segment}") {
-				if t == "" {
+			logrus.Debugln("[aichat] 回复内容:", t)
+			recCfg := airecord.GetConfig()
+			if !fastfailnorecord && !stor.NoRecord() {
+				record := ctx.GetAIRecord(recCfg.ModelID, recCfg.Customgid, t)
+				if record != "" {
+					ctx.SendChain(message.Record(record))
 					continue
 				}
-				logrus.Debugln("[aichat] 回复内容:", t)
-				recCfg := airecord.GetConfig()
-				record := ""
-				if !fastfailnorecord && !stor.NoRecord() {
-					record = ctx.GetAIRecord(recCfg.ModelID, recCfg.Customgid, t)
-					if record != "" {
-						ctx.SendChain(message.Record(record))
-						continue
-					}
-					fastfailnorecord = true
-				}
-				if id != nil {
-					id = ctx.SendChain(message.Reply(id), message.Text(t))
-				} else {
-					id = ctx.SendChain(message.Text(t))
-				}
-				process.SleepAbout1sTo2s()
+				fastfailnorecord = true
 			}
+			if id != nil {
+				id = ctx.SendChain(message.Reply(id), message.Text(t))
+			} else {
+				id = ctx.SendChain(message.Text(t))
+			}
+			process.SleepAbout1sTo2s()
 		}
 	})
 }
