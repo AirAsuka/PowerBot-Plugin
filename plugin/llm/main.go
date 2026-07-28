@@ -121,21 +121,8 @@ func init() {
 		// 分割总结内容为多段（按1000字符长度切割）
 		summaryText := b.String()
 		msg := make(message.Message, 0)
-		for len(summaryText) > 0 {
-			if len(summaryText) <= 1000 {
-				msg = append(msg, ctxext.FakeSenderForwardNode(ctx, message.Text(summaryText)))
-				break
-			}
-
-			// 查找1000字符内的最后一个换行符，尽量在换行处分割
-			chunk := summaryText[:1000]
-			lastNewline := strings.LastIndex(chunk, "\n")
-			if lastNewline > 0 {
-				chunk = summaryText[:lastNewline+1]
-			}
-
+		for _, chunk := range chunkText(summaryText, 1000) {
 			msg = append(msg, ctxext.FakeSenderForwardNode(ctx, message.Text(chunk)))
-			summaryText = summaryText[len(chunk):]
 		}
 		if len(msg) > 0 {
 			ctx.Send(msg)
@@ -204,21 +191,8 @@ func init() {
 
 		// 分割总结内容为多段（按1000字符长度切割）
 		msg := make(message.Message, 0)
-		for len(reply) > 0 {
-			if len(reply) <= 1000 {
-				msg = append(msg, ctxext.FakeSenderForwardNode(ctx, message.Text(reply)))
-				break
-			}
-
-			// 查找1000字符内的最后一个换行符，尽量在换行处分割
-			chunk := reply[:1000]
-			lastNewline := strings.LastIndex(chunk, "\n")
-			if lastNewline > 0 {
-				chunk = reply[:lastNewline+1]
-			}
-
+		for _, chunk := range chunkText(reply, 1000) {
 			msg = append(msg, ctxext.FakeSenderForwardNode(ctx, message.Text(chunk)))
-			reply = reply[len(chunk):]
 		}
 		if len(msg) > 0 {
 			ctx.Send(msg)
@@ -243,4 +217,22 @@ func llmchat(prompt string, temp float32) (string, error) {
 	}
 
 	return strings.TrimSpace(data), nil
+}
+
+// chunkText splits text into chunks up to the given limit, preferring newlines.
+func chunkText(text string, limit int) []string {
+	var chunks []string
+	for len(text) > 0 {
+		if len(text) <= limit {
+			chunks = append(chunks, text)
+			break
+		}
+		chunk := text[:limit]
+		if last := strings.LastIndex(chunk, "\n"); last > 0 {
+			chunk = text[:last+1]
+		}
+		chunks = append(chunks, chunk)
+		text = text[len(chunk):]
+	}
+	return chunks
 }

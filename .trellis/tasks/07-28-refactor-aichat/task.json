@@ -1,0 +1,30 @@
+﻿{
+  "id": "refactor-aichat",
+  "name": "refactor-aichat",
+  "title": "优化重构 AI chat 部分",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": "data",
+  "priority": "P2",
+  "creator": "power",
+  "assignee": "power",
+  "createdAt": "2026-07-28",
+  "completedAt": null,
+  "branch": "codex/refactor-aichat",
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": "d32f546513321d94ba214a66c4040de074513c36",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "plugin/aichat/main.go",
+    "plugin/llm/main.go",
+    "plugin/aichatcfg/main.go"
+  ],
+  "notes": "",
+  "meta": {}
+}

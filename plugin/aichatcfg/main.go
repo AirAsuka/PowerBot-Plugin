@@ -45,6 +45,11 @@ var (
 	})
 )
 
+func registerExtraStr(prefix string, target *string, after ...zero.Handler) {
+	handlers := append([]zero.Handler{chat.NewExtraSetStr(target)}, after...)
+	en.OnPrefix(prefix, chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(handlers...)
+}
+
 func init() {
 	en.UsePreHandler(chat.EnsureConfig, func(ctx *zero.Ctx) bool {
 		k := zero.StateKeyPrefixKeep + "aichatcfg_stor__"
@@ -73,34 +78,22 @@ func init() {
 		Handle(chat.NewExtraSetModelType(&chat.AC.ImageType))
 	en.OnPrefix("设置AI聊天Agent接口类型", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
 		Handle(chat.NewExtraSetModelType(&chat.AC.AgentType))
-	en.OnPrefix("设置AI聊天接口地址", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.API))
-	en.OnPrefix("设置AI聊天识图接口地址", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.ImageAPI))
-	en.OnPrefix("设置AI聊天Agent接口地址", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.AgentAPI))
-	en.OnPrefix("设置AI聊天密钥", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.Key))
-	en.OnPrefix("设置AI聊天识图密钥", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.ImageKey))
-	en.OnPrefix("设置AI聊天Agent密钥", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.AgentKey))
-	en.OnPrefix("设置AI聊天模型名", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.ModelName))
-	en.OnPrefix("设置AI聊天识图模型名", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.ImageModelName))
-	en.OnPrefix("设置AI聊天Agent模型名", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.AgentModelName))
-	en.OnPrefix("设置AI聊天系统提示词", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.SystemP))
-	en.OnPrefix("设置AI聊天Agent性格", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.AgentChar), func(_ *zero.Ctx) {
-			chat.AgentCharConfig.Chars = chat.AC.AgentChar
-		})
-	en.OnPrefix("设置AI聊天Agent性别", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.AgentSex), func(_ *zero.Ctx) {
-			chat.AgentCharConfig.Sex = chat.AC.AgentSex
-		})
+	registerExtraStr("设置AI聊天接口地址", &chat.AC.API)
+	registerExtraStr("设置AI聊天识图接口地址", &chat.AC.ImageAPI)
+	registerExtraStr("设置AI聊天Agent接口地址", &chat.AC.AgentAPI)
+	registerExtraStr("设置AI聊天密钥", &chat.AC.Key)
+	registerExtraStr("设置AI聊天识图密钥", &chat.AC.ImageKey)
+	registerExtraStr("设置AI聊天Agent密钥", &chat.AC.AgentKey)
+	registerExtraStr("设置AI聊天模型名", &chat.AC.ModelName)
+	registerExtraStr("设置AI聊天识图模型名", &chat.AC.ImageModelName)
+	registerExtraStr("设置AI聊天Agent模型名", &chat.AC.AgentModelName)
+	registerExtraStr("设置AI聊天系统提示词", &chat.AC.SystemP)
+	registerExtraStr("设置AI聊天Agent性格", &chat.AC.AgentChar, func(_ *zero.Ctx) {
+		chat.AgentCharConfig.Chars = chat.AC.AgentChar
+	})
+	registerExtraStr("设置AI聊天Agent性别", &chat.AC.AgentSex, func(_ *zero.Ctx) {
+		chat.AgentCharConfig.Sex = chat.AC.AgentSex
+	})
 	en.OnFullMatch("查看AI聊天系统提示词", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		ctx.SendChain(message.Text(chat.AC.SystemP))
 	})
@@ -135,8 +128,7 @@ func init() {
 		}
 		ctx.SendChain(message.Text("成功, 请重置AI聊天Agent"))
 	})
-	en.OnPrefix("设置AI聊天分隔符", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
-		Handle(chat.NewExtraSetStr(&chat.AC.Separator))
+	registerExtraStr("设置AI聊天分隔符", &chat.AC.Separator)
 	en.OnRegex("^设置AI聊天(不)?响应AT$", zero.SuperUserPermission).SetBlock(true).
 		Handle(ctxext.NewStorageSaveBoolHandler(chat.BitmapNrat))
 	en.OnRegex("^设置AI聊天(不)?支持系统提示词$", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
