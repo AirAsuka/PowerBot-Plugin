@@ -16,9 +16,8 @@ import (
 )
 
 const (
-	profileAPI    = "https://api.toue.mxyx.club/api/profile/"
-	tableName     = "amongus_user"
-	statTableName = "amongus_game_stat"
+	profileAPI = "https://api.toue.mxyx.club/api/profile/"
+	tableName  = "amongus_user"
 )
 
 // amongusUser 用户绑定信息
@@ -38,10 +37,6 @@ var (
 			return false
 		}
 		if err = database.db.Create(tableName, &amongusUser{}); err != nil {
-			ctx.SendChain(message.Text("[amongus] ERROR: ", err))
-			return false
-		}
-		if err = database.db.Create(statTableName, &amongusGameStat{}); err != nil {
 			ctx.SendChain(message.Text("[amongus] ERROR: ", err))
 			return false
 		}
@@ -80,28 +75,6 @@ func (adb *amongusDB) find(userID int64) (user amongusUser, err error) {
 	adb.RLock()
 	defer adb.RUnlock()
 	err = adb.db.Find(tableName, &user, "WHERE user_id = ?", userID)
-	return
-}
-
-// insertStat 插入单局个人统计缓存
-func (adb *amongusDB) insertStat(stat *amongusGameStat) error {
-	adb.Lock()
-	defer adb.Unlock()
-	return adb.db.Insert(statTableName, stat)
-}
-
-// findAllStats 查询指定 AmongUs ID 的全部单局统计缓存
-func (adb *amongusDB) findAllStats(amongusID string) (stats []amongusGameStat, err error) {
-	adb.RLock()
-	defer adb.RUnlock()
-	if !adb.db.CanFind(statTableName, "WHERE amongus_id = ?", amongusID) {
-		return nil, nil
-	}
-	var stat amongusGameStat
-	err = adb.db.FindFor(statTableName, &stat, "WHERE amongus_id = ?", func() error {
-		stats = append(stats, stat)
-		return nil
-	}, amongusID)
 	return
 }
 

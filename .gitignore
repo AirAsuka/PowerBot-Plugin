@@ -9,6 +9,7 @@ zerobot
 ZeroBot-Plugin*
 *.syso
 /.direnv
+.env
 /result
 data/
 .agents/
