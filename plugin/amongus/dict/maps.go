@@ -76,6 +76,8 @@ var RoleText = map[string]string{
 	"Grenadier":            "炸弹狂",
 	"Gunsmith":             "快枪手",
 	"Berserker":            "狂战士",
+	"Gaoler":               "狱卒",
+	"Glitch":               "混沌",
 	"Survivor":             "幸存者",
 	"Amnisiac":             "失忆者",
 	"Jester":               "小丑",
@@ -129,6 +131,8 @@ var RoleText = map[string]string{
 	"Redemptor":            "牧师",
 	"Infected":             "感染者",
 	"Jailor":               "典狱长",
+	"Alchemyst":            "炼金术士",
+	"Dreamcatcher":         "摄梦人",
 	"Disperser":            "分散者",
 	"LastImpostor":         "绝境者",
 	"Specoality":           "专业刺客",
@@ -166,4 +170,3 @@ var RoleText = map[string]string{
 	"SoulSight":            "窥天者",
 	"Shifter":              "交换师",
 }
-

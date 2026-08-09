@@ -12,7 +12,7 @@ var RoleCategories = map[string][]string{
 		"Jumper", "Detective", "Veteran", "Medic", "Swapper",
 		"Seer", "Hacker", "Tracker", "Snitch", "Prophet",
 		"InfoSleuth", "Spy", "SecurityGuard", "Medium", "Trapper",
-		"Balancer", "Redemptor", "Oracle",
+		"Balancer", "Redemptor", "Oracle", "Alchemyst", "Dreamcatcher",
 	},
 	"内鬼阵营": {
 		"Impostor", "Morphling", "WolfLord", "Bomber", "Poucher",
@@ -20,7 +20,7 @@ var RoleCategories = map[string][]string{
 		"Eraser", "Vampire", "Cleaner", "Undertaker", "Marionette",
 		"Warlock", "Trickster", "BountyHunter", "Terrorist", "Blackmailer",
 		"Witch", "Ninja", "Yoyo", "EvilTrapper", "Gambler",
-		"Grenadier", "Gunsmith", "Berserker",
+		"Grenadier", "Gunsmith", "Berserker", "Gaoler", "Glitch",
 	},
 	"中立阵营": {
 		"Survivor", "Amnisiac", "Jester", "Vulture", "Lawyer",
