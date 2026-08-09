@@ -1,10 +1,12 @@
 package amongus
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/web"
@@ -17,12 +19,10 @@ import (
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
-const rankingsAPI = "https://api.toue.mxyx.club/api/rankings/"
-
 // maxRankingRows 每个排行榜最大展示行数
 const maxRankingRows = 10
 
-// rankingEntry 排行榜条目，字段与 TOUE-Web /api/rankings/<player_code> 响应保持一致
+// rankingEntry 排行榜条目
 type rankingEntry struct {
 	Name      string
 	Count     int64
@@ -36,6 +36,28 @@ type playerRankings struct {
 	TopKillers []rankingEntry // 最常被谁杀
 	TopVictims []rankingEntry // 击杀最多的玩家
 	DeathRoles []rankingEntry // 死亡率最高的职业
+}
+
+// amongusGameStat 单局个人统计缓存，由 /api/detail/<game_id> 聚合生成
+type amongusGameStat struct {
+	Key        string `json:"key"`         // amongusID + gameID + playerName，主键
+	AmongusID  string `json:"amongus_id"`  // AmongUs游戏ID
+	GameID     string `json:"game_id"`     // 对局ID
+	PlayerName string `json:"player_name"` // 本局使用的玩家名
+	MainRole   string `json:"main_role"`   // 主职业
+	IsDead     int64  `json:"is_dead"`     // 是否死亡 0/1
+	KilledBy   string `json:"killed_by"`   // 击杀者玩家名
+	Victims    string `json:"victims"`     // 被本玩家击杀的玩家名 JSON 数组
+}
+
+// gameRef 对局引用（/api/query 返回的 gameId + playerName）
+type gameRef struct {
+	GameID     string
+	PlayerName string
+}
+
+func (g gameRef) cacheKey(amongusID string) string {
+	return amongusID + "\x00" + g.GameID + "\x00" + g.PlayerName
 }
 
 func init() {
@@ -53,8 +75,14 @@ func init() {
 				ctx.SendChain(message.Text("[amongus] 请求失败: ", err))
 				return
 			}
-			// 排行数据来自 /api/rankings/<player_code>，失败时对应栏目显示暂无数据
-			rankings, _ := queryPlayerRankings(user.AmongusID)
+			// 排行数据由 /api/query + /api/detail 在本地聚合
+			rankings, err := computePlayerRankings(user.AmongusID, func(msg string) {
+				ctx.SendChain(message.Text(msg))
+			})
+			if err != nil {
+				ctx.SendChain(message.Text("[amongus] 统计失败: ", err))
+				return
+			}
 
 			imgBytes, err := renderPersonalCenterImage(user.AmongusID, profile, rankings)
 			if err != nil {
@@ -65,38 +93,221 @@ func init() {
 		})
 }
 
-// queryPlayerRankings 请求 /api/rankings/<player_code> 并解析个人排行
-func queryPlayerRankings(amongusID string) (*playerRankings, error) {
-	fullURL := rankingsAPI + url.PathEscape(amongusID)
-	data, err := web.GetData(fullURL)
+// queryAllPlayerGames 分页拉取该玩家的全部对局引用
+func queryAllPlayerGames(amongusID string) ([]gameRef, error) {
+	encodedID := url.PathEscape(amongusID)
+	const pageSize = 2000
+	var games []gameRef
+	seen := make(map[string]bool)
+	for page := 1; ; page++ {
+		fullURL := fmt.Sprintf("%s?playerCode=%s&page=%d&pageSize=%d", queryAPI, encodedID, page, pageSize)
+		data, err := web.GetData(fullURL)
+		if err != nil {
+			return nil, err
+		}
+		result := gjson.ParseBytes(data)
+		if !result.Get("success").Bool() {
+			return nil, fmt.Errorf(errorMessageFromResult(result, "查询对局列表失败"))
+		}
+		items := result.Get("data").Array()
+		for _, item := range items {
+			g := gameRef{
+				GameID:     item.Get("gameId").String(),
+				PlayerName: item.Get("playerName").String(),
+			}
+			if g.GameID == "" {
+				continue
+			}
+			key := g.GameID + "\x00" + g.PlayerName
+			if !seen[key] {
+				seen[key] = true
+				games = append(games, g)
+			}
+		}
+		total := result.Get("pagination.total").Int()
+		if len(items) == 0 || int64(page*pageSize) >= total {
+			break
+		}
+	}
+	return games, nil
+}
+
+// fetchGameStat 拉取单局详情并提取该玩家的统计信息
+func fetchGameStat(amongusID string, g gameRef) (amongusGameStat, bool) {
+	detail, err := queryGameDetail(g.GameID)
+	if err != nil {
+		return amongusGameStat{}, false
+	}
+	players := detail.Get("data.Players").Array()
+	selfIdx := -1
+	for i := range players {
+		if players[i].Get("PlayerName").String() == g.PlayerName {
+			selfIdx = i
+			break
+		}
+	}
+	if selfIdx < 0 {
+		return amongusGameStat{}, false
+	}
+	self := players[selfIdx]
+
+	var isDead int64
+	if self.Get("GameplayStats.IsDead").Bool() {
+		isDead = 1
+	}
+	killedBy := strings.TrimSpace(self.Get("GameplayStats.KilledBy").String())
+	if killedBy == "null" || killedBy == "Null" || killedBy == "None" {
+		killedBy = ""
+	}
+
+	victims := make([]string, 0, len(players))
+	for i := range players {
+		if i == selfIdx {
+			continue
+		}
+		if players[i].Get("GameplayStats.KilledBy").String() == g.PlayerName {
+			victims = append(victims, players[i].Get("PlayerName").String())
+		}
+	}
+	victimsJSON, _ := json.Marshal(victims)
+
+	return amongusGameStat{
+		Key:        g.cacheKey(amongusID),
+		AmongusID:  amongusID,
+		GameID:     g.GameID,
+		PlayerName: g.PlayerName,
+		MainRole:   self.Get("RoleInfo.MainRole").String(),
+		IsDead:     isDead,
+		KilledBy:   killedBy,
+		Victims:    string(victimsJSON),
+	}, true
+}
+
+// computePlayerRankings 拉取/补齐单局统计缓存并聚合排行榜
+func computePlayerRankings(amongusID string, notify func(string)) (*playerRankings, error) {
+	games, err := queryAllPlayerGames(amongusID)
 	if err != nil {
 		return nil, err
 	}
-	result := gjson.ParseBytes(data)
-	if !result.Get("success").Bool() {
-		return nil, fmt.Errorf(errorMessageFromResult(result, "查询排行失败"))
+	if len(games) == 0 {
+		return &playerRankings{}, nil
 	}
 
-	rankings := &playerRankings{}
-	parseEntries := func(path string) []rankingEntry {
-		items := result.Get(path).Array()
-		entries := make([]rankingEntry, 0, len(items))
-		for _, item := range items {
-			entries = append(entries, rankingEntry{
-				Name:      item.Get("name").String(),
-				Count:     item.Get("count").Int(),
-				Total:     item.Get("total").Int(),
-				Deaths:    item.Get("deaths").Int(),
-				DeathRate: item.Get("deathRate").Float(),
-			})
+	cached, err := database.findAllStats(amongusID)
+	if err != nil {
+		return nil, err
+	}
+	cachedKeys := make(map[string]bool, len(cached))
+	for _, s := range cached {
+		cachedKeys[s.Key] = true
+	}
+	missing := make([]gameRef, 0, len(games))
+	for _, g := range games {
+		if !cachedKeys[g.cacheKey(amongusID)] {
+			missing = append(missing, g)
+		}
+	}
+
+	if len(missing) > 0 {
+		if notify != nil && len(missing) > 20 {
+			notify(fmt.Sprintf("正在同步 %d 场对局的统计数据，请稍候...", len(missing)))
+		}
+		const workers = 8
+		jobs := make(chan gameRef)
+		results := make(chan amongusGameStat, len(missing))
+		var wg sync.WaitGroup
+		for w := 0; w < workers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for g := range jobs {
+					if stat, ok := fetchGameStat(amongusID, g); ok {
+						results <- stat
+					}
+				}
+			}()
+		}
+		for _, g := range missing {
+			jobs <- g
+		}
+		close(jobs)
+		wg.Wait()
+		close(results)
+		for stat := range results {
+			if err := database.insertStat(&stat); err != nil {
+				return nil, err
+			}
+			cached = append(cached, stat)
+		}
+	}
+
+	return aggregateRankings(cached), nil
+}
+
+// aggregateRankings 聚合单局统计为击杀/被击杀/死亡率排行（口径与 Web 端一致）
+func aggregateRankings(stats []amongusGameStat) *playerRankings {
+	killerCounts := make(map[string]int64)
+	victimCounts := make(map[string]int64)
+	roleTotals := make(map[string]int64)
+	roleDeaths := make(map[string]int64)
+
+	for _, s := range stats {
+		if s.KilledBy != "" && s.KilledBy != s.PlayerName {
+			killerCounts[s.KilledBy]++
+		}
+		var victims []string
+		if json.Unmarshal([]byte(s.Victims), &victims) == nil {
+			for _, v := range victims {
+				victimCounts[v]++
+			}
+		}
+		if s.MainRole != "" {
+			roleTotals[s.MainRole]++
+			roleDeaths[s.MainRole] += s.IsDead
+		}
+	}
+
+	topN := func(counts map[string]int64, n int) []rankingEntry {
+		entries := make([]rankingEntry, 0, len(counts))
+		for name, count := range counts {
+			entries = append(entries, rankingEntry{Name: name, Count: count})
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			if entries[i].Count != entries[j].Count {
+				return entries[i].Count > entries[j].Count
+			}
+			return entries[i].Name < entries[j].Name
+		})
+		if len(entries) > n {
+			entries = entries[:n]
 		}
 		return entries
 	}
 
-	rankings.TopKillers = parseEntries("data.topKillers")
-	rankings.TopVictims = parseEntries("data.topVictims")
-	rankings.DeathRoles = mergeDeathRolesByDisplayName(parseEntries("data.deathRoles"))
-	return rankings, nil
+	rankings := &playerRankings{
+		TopKillers: topN(killerCounts, 20),
+		TopVictims: topN(victimCounts, 20),
+	}
+
+	// 死亡率排行：至少 5 场才计入（与服务端 HAVING COUNT(*) >= 5 一致）
+	deathRoles := make([]rankingEntry, 0, len(roleTotals))
+	for role, total := range roleTotals {
+		if total < 5 {
+			continue
+		}
+		deaths := roleDeaths[role]
+		deathRoles = append(deathRoles, rankingEntry{
+			Name:      role,
+			Total:     total,
+			Deaths:    deaths,
+			DeathRate: float64(deaths) / float64(total) * 100,
+		})
+	}
+	rankings.DeathRoles = mergeDeathRolesByDisplayName(deathRoles)
+	if len(rankings.DeathRoles) > 20 {
+		rankings.DeathRoles = rankings.DeathRoles[:20]
+	}
+	return rankings
 }
 
 // mergeDeathRolesByDisplayName 按职业中文名去重合并并重算死亡率（与 Web 端 UserDashboard 逻辑一致）
@@ -197,8 +408,7 @@ func renderPersonalCenterImage(amongusID string, p *profileData, r *playerRankin
 	overviewRowH := 120.0
 	overviewCardH := sectionTopPad + overviewRowH + cardBottomPad
 	rankTitleH := 44.0
-	rankRows := maxRankingRows
-	rankCardH := sectionTopPad + rankTitleH + rankRowH*float64(rankRows) + cardBottomPad
+	rankCardH := sectionTopPad + rankTitleH + rankRowH*float64(maxRankingRows) + cardBottomPad
 	canvasW := padding*2 + cardW
 	canvasH := padding + titleH + sectionGap + overviewCardH + sectionGap + rankCardH + padding
 
