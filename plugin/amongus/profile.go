@@ -19,6 +19,9 @@ import (
 
 // 个人统计数据结构，字段与 TOUE-Web /api/profile/<player_code> 响应保持一致
 
+// maxProfileRoleRows 职业统计最大展示行数
+const maxProfileRoleRows = 10
+
 type playerNameStat struct {
 	Name  string
 	Count int64
@@ -136,6 +139,11 @@ func queryPlayerProfile(amongusID string) (*profileData, error) {
 		if profile.Camps[i].TotalMatches > 0 {
 			profile.Camps[i].WinRate = float64(profile.Camps[i].WinMatches) / float64(profile.Camps[i].TotalMatches) * 100
 		}
+	}
+
+	// 职业统计只保留前 10 行
+	if len(profile.Roles) > maxProfileRoleRows {
+		profile.Roles = profile.Roles[:maxProfileRoleRows]
 	}
 
 	return profile, nil
