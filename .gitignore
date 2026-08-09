@@ -11,3 +11,7 @@ ZeroBot-Plugin*
 /.direnv
 /result
 data/
+.agents/
+.codex/
+.trellis/
+AGENTS.md
