@@ -2,20 +2,16 @@
 package amongus
 
 import (
-	"fmt"
 	"net/url"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/FloatTech/floatbox/binary"
 	fcext "github.com/FloatTech/floatbox/ctxext"
-	"github.com/FloatTech/floatbox/web"
 	sql "github.com/FloatTech/sqlite"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
-	"github.com/FloatTech/zbputils/img/text"
-	"github.com/tidwall/gjson"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 
@@ -53,7 +49,8 @@ var (
 		DisableOnDefault: false,
 		Brief:            "AU战绩查询",
 		Help: "- 录入信息 xxxx (绑定你的AmongUs ID)\n" +
-			"- 查询战绩 (查询你的AmongUs战绩)\n" +
+			"- 查询战绩 (查询你的个人统计：玩家名称/总览数据/阵营统计/职业统计)\n" +
+			"- 个人中心 (战绩总览+击杀/被击杀/死亡率排行)\n" +
 			"- 最近n场 (查询最近n场对局，n为1-10)\n" +
 			"- 游戏详情 <gameId> (查询对局详情，不传gameId默认取最近1场)\n" +
 			"- 查看职业列表 (查看所有职业阵营分类)\n" +
@@ -115,13 +112,8 @@ func init() {
 				ctx.SendChain(message.Text("你还没有录入AmongUs ID，请先使用「录入信息 xxxx」绑定"))
 				return
 			}
-			// 请求 API 获取战绩
-			encodedID := url.PathEscape(user.AmongusID)
-
-			// 3. 发起请求
-			fullURL := profileAPI + encodedID
-			data, err := web.GetData(fullURL)
-
+			// 请求 /api/profile/<player_code> 获取个人统计
+			profile, err := queryPlayerProfile(user.AmongusID)
 			if err != nil {
 				ctx.SendChain(message.Text("[amongus] 请求失败: ", err))
 				return
@@ -136,7 +128,7 @@ func init() {
 			totalStats := result.Get("data.totalStats")
 			averageKills := totalStats.Get("averageKills").Float()
 			averageTasksCompleted := totalStats.Get("averageTasksCompleted").Float()
-			taskCompletionRate := totalStats.Get("taskCompletionRate").Float()
+			completedAllTasksRate := totalStats.Get("completedAllTasksRate").Float()
 			totalMatches := totalStats.Get("totalMatches").Int()
 			winRate := totalStats.Get("winRate").Float()
 
@@ -148,16 +140,17 @@ func init() {
 			sb.WriteString(fmt.Sprintf("  总胜率:        %.2f%%\n", winRate))
 			sb.WriteString(fmt.Sprintf("  平均击杀:      %.2f\n", averageKills))
 			sb.WriteString(fmt.Sprintf("  平均任务完成:  %.2f\n", averageTasksCompleted))
-			sb.WriteString(fmt.Sprintf("  总任务完成率:  %.2f%%\n", taskCompletionRate))
+			sb.WriteString(fmt.Sprintf("  总任务完成率:  %.2f%%\n", completedAllTasksRate))
 			sb.WriteString("\n════════════════════")
 
 			// 渲染为图片并发送
 			imgData, err := text.RenderToBase64(sb.String(), text.FontFile, 400, 20)
 			if err != nil {
-				ctx.SendChain(message.Text("[amongus] 图片渲染失败: ", err))
+				// 渲染失败则退回文本摘要
+				ctx.SendChain(message.Text(formatProfileSummary(user.AmongusID, profile)))
 				return
 			}
-			ctx.SendChain(message.Image("base64://" + binary.BytesToString(imgData)))
+			ctx.SendChain(message.ImageBytes(imgBytes))
 		})
 
 	// 查看职业列表

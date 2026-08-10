@@ -11,7 +11,10 @@ PowerBot-Plugin*
 PowerBot*
 *.syso
 /.direnv
+.env
 /result
 data/
-plugin/memes/meme-generator-rs
-plugin/memes/nonebot-plugin-memes-api
+.agents/
+.codex/
+.trellis/
+AGENTS.md
