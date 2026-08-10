@@ -16,28 +16,28 @@ import (
 var (
 	cmd      = make([]string, 0)
 	datapath string
-	cmdMap = map[string]func(cc *context, args ...string) (string, error){
-		"灰度":       grayscale,
-		"上翻":       flipV,
-		"下翻":       flipV,
-		"左翻":       flipH,
-		"右翻":       flipH,
-		"反色":       invert,
-		"负片":     invertAndGrayscale,
-		"浮雕":       convolve3x3,
-		"打码":       blur,
-		"旋转":       rotate,
-		"变形":       deformation,
-		"2敲":       knock,
-		"2拍":       pat,
-		"抓":        zou,      // 揍=抓
-		"诶嘿":       eihei,
-		"砰":        peng,
-		"怀":        huai,
-		"给我变":     bian,
-		"玩一下":     van,
-		"不要看":     neko,
-		"抬棺":      taiguan,
+	cmdMap   = map[string]func(cc *context, args ...string) (string, error){
+		"灰度":  grayscale,
+		"上翻":  flipV,
+		"下翻":  flipV,
+		"左翻":  flipH,
+		"右翻":  flipH,
+		"反色":  invert,
+		"负片":  invertAndGrayscale,
+		"浮雕":  convolve3x3,
+		"打码":  blur,
+		"旋转":  rotate,
+		"变形":  deformation,
+		"2敲":  knock,
+		"2拍":  pat,
+		"抓":   zou, // 揍=抓
+		"诶嘿":  eihei,
+		"砰":   peng,
+		"怀":   huai,
+		"给我变": bian,
+		"玩一下": van,
+		"不要看": neko,
+		"抬棺":  taiguan,
 	}
 )
 

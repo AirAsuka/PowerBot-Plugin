@@ -1,3 +1,4 @@
+// Package dict 提供 amongus 游戏数据
 package dict
 
 // RoleTextReverse 中文名 -> 英文名列表的反向映射（自动从 RoleText 生成）

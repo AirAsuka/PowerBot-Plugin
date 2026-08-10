@@ -7,6 +7,8 @@ go-zero*
 nohup.out
 zerobot
 ZeroBot-Plugin*
+PowerBot-Plugin*
+PowerBot*
 *.syso
 /.direnv
 .env
@@ -16,3 +18,5 @@ data/
 .codex/
 .trellis/
 AGENTS.md
+plugin/memes/meme-generator-rs
+plugin/memes/nonebot-plugin-memes-api

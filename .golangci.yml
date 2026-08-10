@@ -75,3 +75,9 @@ issues:
   exclude:
     - "Error return value of .((os.)?std(out|err)..*|.*Close|.*Seek|.*Flush|os.Remove(All)?|.*print(f|ln)?|os.(Un)?Setenv). is not check"
     - 'identifier ".*" contain non-ASCII character: U\+.*'
+  exclude-rules:
+    # Pre-existing unused functions in gif plugin (not part of AU branch)
+    - path: plugin/gif/
+      linters:
+        - unused
+      text: "func .* is unused"

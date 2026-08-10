@@ -14,10 +14,11 @@ import (
 	"github.com/FloatTech/imgfactory"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/img/text"
-	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 	"github.com/tidwall/gjson"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
+
+	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 )
 
 const (
@@ -143,7 +144,7 @@ func queryRecentGames(amongusID string, page int, pageSize int) ([]recentGame, p
 
 	result := gjson.ParseBytes(data)
 	if !result.Get("success").Bool() {
-		return nil, paginationInfo{}, fmt.Errorf(errorMessageFromResult(result, "查询最近对局失败"))
+		return nil, paginationInfo{}, errors.New(errorMessageFromResult(result, "查询最近对局失败"))
 	}
 
 	items := result.Get("data").Array()
@@ -197,7 +198,7 @@ func queryGameDetail(gameID string) (gjson.Result, error) {
 
 	result := gjson.ParseBytes(data)
 	if !result.Get("success").Bool() {
-		return gjson.Result{}, fmt.Errorf(errorMessageFromResult(result, "查询游戏详情失败"))
+		return gjson.Result{}, errors.New(errorMessageFromResult(result, "查询游戏详情失败"))
 	}
 	return result, nil
 }
@@ -277,9 +278,9 @@ func formatMMSS(totalSeconds int64) string {
 	if totalSeconds < 0 {
 		totalSeconds = 0
 	}
-	min := totalSeconds / 60
+	minVal := totalSeconds / 60
 	sec := totalSeconds % 60
-	return fmt.Sprintf("%02d分%02d秒", min, sec)
+	return fmt.Sprintf("%02d分%02d秒", minVal, sec)
 }
 
 func formatDeathInfo(reason, killedBy string, isDead bool) string {
@@ -444,7 +445,7 @@ func formatGameDetailSummary(gameID string, detail gjson.Result) string {
 		isWinner := p.Get("GameplayStats.IsWinner").Bool()
 		isDead := p.Get("GameplayStats.IsDead").Bool()
 		killCount := p.Get("GameplayStats.KillCount").Int()
-		if killCount > 100 { 
+		if killCount > 100 {
 			killCount = 0
 		}
 		completed := p.Get("GameplayStats.Tasks.Completed").Int()
@@ -733,7 +734,7 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 		isWinner := p.Get("GameplayStats.IsWinner").Bool()
 		isDead := p.Get("GameplayStats.IsDead").Bool()
 		killCount := p.Get("GameplayStats.KillCount").Int()
-		if killCount > 100 { 
+		if killCount > 100 {
 			killCount = 0
 		}
 		completed := p.Get("GameplayStats.Tasks.Completed").Int()

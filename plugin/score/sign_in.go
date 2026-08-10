@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -347,29 +348,41 @@ func initPic(picFile string, uid int64) (avatar []byte, err error) {
 
 // 使用"file:"发送图片失败后，改用base64发送
 func trySendImage(filePath string, ctx *zero.Ctx) {
-	filePath = file.BOTPATH + "/" + filePath
-	if id := ctx.SendChain(message.Image("file:///" + filePath)); id.ID() != 0 {
+	absPath := filePath
+	// 大部分插件传入的是相对路径（如 engine.DataFolder() + "cache/..."）
+	// 这里统一转成绝对路径，避免 BOTPATH 重复拼接导致路径错误。
+	if !filepath.IsAbs(absPath) {
+		absPath = filepath.Join(file.BOTPATH, absPath)
+	}
+	absPath = filepath.Clean(absPath)
+
+	// 优先尝试使用 "file:///" 发送（对部分 OneBot 实现更高效）
+	if id := ctx.SendChain(message.Image("file:///" + absPath)); id.ID() != 0 {
 		return
 	}
-	imgFile, err := os.Open(filePath)
+
+	// file:// 失败时，用 bytes 发送（不依赖 OneBot 端的文件系统可见性）
+	data, err := os.ReadFile(absPath)
 	if err != nil {
-		ctx.SendChain(message.Text("ERROR: 无法打开文件", err))
+		ctx.SendChain(message.Text("ERROR: 无法读取图片文件: ", err))
 		return
 	}
-	defer imgFile.Close()
-	// 使用 base64.NewEncoder 将文件内容编码为 base64 字符串
+	if id := ctx.SendChain(message.ImageBytes(data)); id.ID() != 0 {
+		return
+	}
+
+	// 最后再兜底一次 base64://（某些实现对 ImageBytes 支持不一致）
 	var encodedFileData strings.Builder
 	encodedFileData.WriteString("base64://")
 	encoder := base64.NewEncoder(base64.StdEncoding, &encodedFileData)
-	_, err = io.Copy(encoder, imgFile)
+	_, err = io.Copy(encoder, strings.NewReader(string(data)))
 	if err != nil {
-		ctx.SendChain(message.Text("ERROR: 无法编码文件内容", err))
+		ctx.SendChain(message.Text("ERROR: 无法编码图片内容: ", err))
 		return
 	}
-	encoder.Close()
-	drawedFileBase64 := encodedFileData.String()
-	if id := ctx.SendChain(message.Image(drawedFileBase64)); id.ID() == 0 {
-		ctx.SendChain(message.Text("ERROR: 无法读取图片文件", err))
+	_ = encoder.Close()
+	if id := ctx.SendChain(message.Image(encodedFileData.String())); id.ID() == 0 {
+		ctx.SendChain(message.Text("ERROR: 图片发送失败（file://、ImageBytes、base64:// 均失败）"))
 		return
 	}
 }
