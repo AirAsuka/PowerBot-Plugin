@@ -1,17 +1,18 @@
 package amongus
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"image/png"
 	"net/url"
 	"sort"
 	"strings"
 
+	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/web"
 	"github.com/FloatTech/gg"
-	"github.com/FloatTech/imgfactory"
-	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/img/text"
 	"github.com/tidwall/gjson"
@@ -462,5 +463,9 @@ func renderProfileImage(amongusID string, p *profileData) ([]byte, error) {
 		}
 	}
 
-	return imgfactory.ToBytes(c.Image())
+	var buf bytes.Buffer
+	if err = png.Encode(&buf, c.Image()); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

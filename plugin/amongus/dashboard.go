@@ -1,13 +1,14 @@
 package amongus
 
 import (
+	"bytes"
 	"fmt"
+	"image/png"
 	"sort"
 	"strings"
 
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/gg"
-	"github.com/FloatTech/imgfactory"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/img/text"
 	zero "github.com/wdvxdr1123/ZeroBot"
@@ -316,5 +317,9 @@ func renderPersonalCenterImage(amongusID string, p *profileData, r *playerRankin
 		}
 	}
 
-	return imgfactory.ToBytes(c.Image())
+	var buf bytes.Buffer
+	if err = png.Encode(&buf, c.Image()); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
