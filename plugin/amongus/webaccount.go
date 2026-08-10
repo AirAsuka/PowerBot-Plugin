@@ -17,7 +17,7 @@ import (
 
 const (
 	// toueWebBase TOUE-Web API 地址
-	toueWebBase = "https://api.toue.mxyx.club"
+	toueWebBase = "https://toue.mxyx.club"
 )
 
 // tokenExpireMargin token 提前判定过期的余量，避免边界时刻请求被 401

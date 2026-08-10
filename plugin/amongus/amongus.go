@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	profileAPI = "https://api.toue.mxyx.club/api/profile/"
+	profileAPI = "https://toue.mxyx.club/api/profile/"
 	tableName  = "amongus_user"
 )
 

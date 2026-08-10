@@ -22,7 +22,7 @@ import (
 
 const (
 	queryAPI  = "https://toue.mxyx.club/api/query"
-	detailAPI = "https://api.toue.mxyx.club/api/detail/"
+	detailAPI = "https://toue.mxyx.club/api/detail/"
 )
 
 var (
