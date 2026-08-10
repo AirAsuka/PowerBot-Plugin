@@ -13,7 +13,7 @@ import (
 )
 
 func init() {
-	engine.OnRegex(`^装备(`+strings.Join(poleList, "|")+`)$`, getdb).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^装备(`+strings.Join(poleList, "|")+`)$`, getdb, groupNotDisabled).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 		equipInfo, err := dbdata.getUserEquip(uid)
 		if err != nil {
@@ -153,7 +153,7 @@ func init() {
 			),
 		)
 	})
-	engine.OnFullMatchGroup([]string{"修复鱼竿", "维修鱼竿"}, getdb).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+	engine.OnFullMatchGroup([]string{"修复鱼竿", "维修鱼竿"}, getdb, groupNotDisabled).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 		equipInfo, err := dbdata.getUserEquip(uid)
 		if err != nil {
@@ -285,7 +285,7 @@ func init() {
 			),
 		)
 	})
-	engine.OnRegex(`^附魔(诱钓|海之眷顾)$`, getdb).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^附魔(诱钓|海之眷顾)$`, getdb, groupNotDisabled).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 		equipInfo, err := dbdata.getUserEquip(uid)
 		if err != nil {
@@ -342,7 +342,7 @@ func init() {
 		}
 		ctx.SendChain(message.Text("附魔成功,", book, "等级提高至", enchantLevel[number]))
 	})
-	engine.OnRegex(`^合成(.+竿|三叉戟)$`, getdb).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
+	engine.OnRegex(`^合成(.+竿|三叉戟)$`, getdb, groupNotDisabled).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
 		uid := ctx.Event.UserID
 		thingList := []string{"木竿", "铁竿", "金竿", "钻石竿", "下界合金竿", "三叉戟"}
 		thingName := ctx.State["regex_matched"].([]string)[1]
@@ -434,12 +434,59 @@ func init() {
 						return
 					}
 					if nextcmd == "梭哈" {
-						// len(list)取3的倍数，表示能够用于合成鱼竿的最大数量，note：此处未对article.Number>1的情况做处理
-						for i := 3; i < (len(articles)/3)*3; i++ {
-							list = append(list, i)
+						totalBatches := maxCount / 3
+						success := 0
+						fail := 0
+						for batch := 0; batch < totalBatches; batch++ {
+							base := batch * 3
+							indices := []int{base, base + 1, base + 2}
+							sumInduce := 0
+							sumFavor := 0
+							for _, idx := range indices {
+								sumInduce += poles[idx].Induce
+								sumFavor += poles[idx].Favor
+							}
+							avgInduce := sumInduce / 3
+							avgFavor := sumFavor / 3
+							for _, idx := range indices {
+								thingInfo := articles[idx]
+								thingInfo.Number = 0
+								err = dbdata.updateUserThingInfo(uid, thingInfo)
+								if err != nil {
+									ctx.SendChain(message.Text("[ERROR at pole.go.12]:", err))
+									return
+								}
+							}
+							if rand.Intn(100) < 90 {
+								attribute := strconv.Itoa(durationList[thingName]) + "/0/" + strconv.Itoa(avgInduce) + "/" + strconv.Itoa(avgFavor)
+								newthing := article{
+									Duration: time.Now().Unix() + int64(batch*10),
+									Type:     "pole",
+									Name:     thingName,
+									Number:   1,
+									Other:    attribute,
+								}
+								err = dbdata.updateUserThingInfo(uid, newthing)
+								if err != nil {
+									ctx.SendChain(message.Text("[ERROR at pole.go.12]:", err))
+									return
+								}
+								success++
+							} else {
+								fail++
+							}
 						}
-						check = true
-						break
+						remaining := maxCount % 3
+						msgText := "合成完成，成功：" + strconv.Itoa(success) + " 个，失败：" + strconv.Itoa(fail) + " 个"
+						if remaining > 0 {
+							msgText += "，剩余 " + strconv.Itoa(remaining) + " 根材料未参与合成"
+						}
+						ctx.Send(
+							message.ReplyWithMessage(ctx.Event.MessageID,
+								message.Text(msgText),
+							),
+						)
+						return
 					}
 					chooseList := strings.Split(nextcmd, " ")
 					first, err := strconv.Atoi(chooseList[0])

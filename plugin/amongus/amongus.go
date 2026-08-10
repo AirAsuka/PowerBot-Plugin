@@ -8,11 +8,12 @@ import (
 
 	fcext "github.com/FloatTech/floatbox/ctxext"
 	sql "github.com/FloatTech/sqlite"
-	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
+
+	amongusdict "github.com/FloatTech/ZeroBot-Plugin/plugin/amongus/dict"
 )
 
 const (

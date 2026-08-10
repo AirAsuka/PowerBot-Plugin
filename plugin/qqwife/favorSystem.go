@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/FloatTech/floatbox/math"
-	"github.com/FloatTech/imgfactory"
+	"github.com/FloatTech/gg/factory"
 	sql "github.com/FloatTech/sqlite"
 	control "github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
@@ -118,7 +118,7 @@ func init() {
 				ctx.SendChain(message.At(uid), message.Text("[ERROR]:你的技能CD记录失败\n", err))
 			}
 			// 输出结果
-			gifts := []string{"女装", "玫瑰花", "巧克力", "非洲之心", "睡衣", "玩偶", "咸鱼之王","键盘","保洁织的围巾","机器人","足力健","奥特曼","Amongus","鹅鸭杀"}
+			gifts := []string{"女装", "玫瑰花", "巧克力", "非洲之心", "睡衣", "玩偶", "咸鱼之王", "键盘", "保洁织的围巾", "机器人", "足力健", "奥特曼", "Amongus", "鹅鸭杀"}
 			gift := gifts[rand.Intn(len(gifts))]
 			if mood == 0 {
 				ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了", gift, "送给了ta,ta很不喜欢,你们的好感度降低至", lastfavor))
@@ -193,7 +193,7 @@ func init() {
 				canvas.Fill()
 				i++
 			}
-			data, err = imgfactory.ToBytes(canvas.Image())
+			data, err = factory.ToBytes(canvas.Image())
 			if err != nil {
 				ctx.SendChain(message.Text("[qqwife]ERROR: ", err))
 				return

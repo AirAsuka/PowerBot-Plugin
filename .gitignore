@@ -16,3 +16,5 @@ data/
 .codex/
 .trellis/
 AGENTS.md
+plugin/memes/meme-generator-rs
+plugin/memes/nonebot-plugin-memes-api

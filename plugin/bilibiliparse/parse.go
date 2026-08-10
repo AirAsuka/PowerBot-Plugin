@@ -90,7 +90,7 @@ func init() {
 			option := ctx.State["regex_matched"].([]string)[1]
 			c, ok := ctx.State["manager"].(*ctrl.Control[*zero.Ctx])
 			if !ok {
-				ctx.SendChain(message.Text("找不到服务!"))
+				// ctx.SendChain(message.Text("找不到服务!"))
 				return
 			}
 			data := c.GetData(ctx.Event.GroupID)
@@ -119,7 +119,7 @@ func init() {
 			option := ctx.State["regex_matched"].([]string)[1]
 			c, ok := ctx.State["manager"].(*ctrl.Control[*zero.Ctx])
 			if !ok {
-				ctx.SendChain(message.Text("找不到服务!"))
+				// ctx.SendChain(message.Text("找不到服务!"))
 				return
 			}
 			data := c.GetData(ctx.Event.GroupID)
@@ -234,6 +234,10 @@ func getVideoSummary(cookiecfg *bz.CookieConfig, card bz.Card) (msg []message.Se
 	}
 	err = json.Unmarshal(data, &videoSummary)
 	msg = make([]message.Segment, 0, 16)
+	if videoSummary.Data.ModelResult.Summary == `` {
+		msg = append(msg, message.Text(fmt.Sprintf("生成视频总结: %s(%d)", videoSummary.Message, videoSummary.Code)))
+		return
+	}
 	msg = append(msg, message.Text("已为你生成视频总结\n\n"))
 	msg = append(msg, message.Text(videoSummary.Data.ModelResult.Summary, "\n\n"))
 	for _, v := range videoSummary.Data.ModelResult.Outline {
