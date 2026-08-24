@@ -51,80 +51,15 @@ func init() {
 	// 礼物系统
 	engine.OnMessage(zero.NewPattern(nil).Text(`^(买礼物给|送礼物给)`).At().AsRule(), zero.OnlyGroup, getdb).SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			gid := ctx.Event.GroupID
-			uid := ctx.Event.UserID
 			patternParsed := ctx.State[zero.KeyPattern].([]zero.PatternParsed)
 			gay, _ := strconv.ParseInt(patternParsed[1].At(), 10, 64)
-			if gay == uid {
-				ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.At(uid), message.Text("你想给自己买什么礼物呢?")))
-				return
-			}
-			// 获取CD
-			groupInfo, err := 民政局.查看设置(gid)
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:", err))
-				return
-			}
-			ok, err := 民政局.判断CD(gid, uid, "买礼物", groupInfo.CDtime)
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:", err))
-				return
-			}
-			if !ok {
-				ctx.SendChain(message.Text("舔狗，今天你已经送过礼物了。"))
-				return
-			}
-			// 获取好感度
-			favor, err := 民政局.查好感度(uid, gay)
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:好感度库发生问题力\n", err))
-				return
-			}
-			// 对接小熊饼干
-			walletinfo := wallet.GetWalletOf(uid)
-			if walletinfo < 1 {
-				ctx.SendChain(message.Text("你钱包没钱啦！"))
-				return
-			}
-			moneyToFavor := rand.Intn(math.Min(walletinfo, 100)) + 1
-			// 计算钱对应的好感值
-			newFavor := 1
-			moodMax := 2
-			if favor > 50 {
-				newFavor = moneyToFavor % 10 // 礼物厌倦
-			} else {
-				moodMax = 5
-				newFavor += rand.Intn(moneyToFavor)
-			}
-			// 随机对方心情
-			mood := rand.Intn(moodMax)
-			if mood == 0 {
-				newFavor = -newFavor
-			}
-			// 记录结果
-			err = wallet.InsertWalletOf(uid, -moneyToFavor)
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:钱包坏掉力:\n", err))
-				return
-			}
-			lastfavor, err := 民政局.更新好感度(uid, gay, newFavor)
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:好感度数据库发生问题力\n", err))
-				return
-			}
-			// 写入CD
-			err = 民政局.记录CD(gid, uid, "买礼物")
-			if err != nil {
-				ctx.SendChain(message.At(uid), message.Text("[ERROR]:你的技能CD记录失败\n", err))
-			}
-			// 输出结果
-			gifts := []string{"女装", "玫瑰花", "巧克力", "非洲之心", "睡衣", "玩偶", "咸鱼之王", "键盘", "保洁织的围巾", "机器人", "足力健", "奥特曼", "Amongus", "鹅鸭杀"}
-			gift := gifts[rand.Intn(len(gifts))]
-			if mood == 0 {
-				ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了", gift, "送给了ta,ta很不喜欢,你们的好感度降低至", lastfavor))
-			} else {
-				ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了", gift, "送给了ta,ta很喜欢,你们的好感度升至", lastfavor))
-			}
+			giveGift(ctx, gay)
+		})
+	// 礼物系统(直接填QQ号)
+	engine.OnRegex(`^(买礼物给|送礼物给)(\d+)`, zero.OnlyGroup, getdb).SetBlock(true).Limit(ctxext.LimitByUser).
+		Handle(func(ctx *zero.Ctx) {
+			gay, _ := strconv.ParseInt(ctx.State["regex_matched"].([]string)[2], 10, 64)
+			giveGift(ctx, gay)
 		})
 	engine.OnFullMatch("好感度列表", zero.OnlyGroup, getdb).SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
@@ -261,6 +196,81 @@ func init() {
 			}
 			ctx.SendChain(message.Text("清理好了哦"))
 		})
+}
+
+func giveGift(ctx *zero.Ctx, gay int64) {
+	gid := ctx.Event.GroupID
+	uid := ctx.Event.UserID
+	if gay == uid {
+		ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.At(uid), message.Text("你想给自己买什么礼物呢?")))
+		return
+	}
+	// 获取CD
+	groupInfo, err := 民政局.查看设置(gid)
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:", err))
+		return
+	}
+	ok, err := 民政局.判断CD(gid, uid, "买礼物", groupInfo.CDtime)
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:", err))
+		return
+	}
+	if !ok {
+		ctx.SendChain(message.Text("舔狗，今天你已经送过礼物了。"))
+		return
+	}
+	// 获取好感度
+	favor, err := 民政局.查好感度(uid, gay)
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:好感度库发生问题力\n", err))
+		return
+	}
+	// 对接小熊饼干
+	walletinfo := wallet.GetWalletOf(uid)
+	if walletinfo < 1 {
+		ctx.SendChain(message.Text("你钱包没钱啦！"))
+		return
+	}
+	moneyToFavor := rand.Intn(math.Min(walletinfo, 100)) + 1
+	// 计算钱对应的好感值
+	newFavor := 1
+	moodMax := 2
+	if favor > 50 {
+		newFavor = moneyToFavor % 10 // 礼物厌倦
+	} else {
+		moodMax = 5
+		newFavor += rand.Intn(moneyToFavor)
+	}
+	// 随机对方心情
+	mood := rand.Intn(moodMax)
+	if mood == 0 {
+		newFavor = -newFavor
+	}
+	// 记录结果
+	err = wallet.InsertWalletOf(uid, -moneyToFavor)
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:钱包坏掉力:\n", err))
+		return
+	}
+	lastfavor, err := 民政局.更新好感度(uid, gay, newFavor)
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:好感度数据库发生问题力\n", err))
+		return
+	}
+	// 写入CD
+	err = 民政局.记录CD(gid, uid, "买礼物")
+	if err != nil {
+		ctx.SendChain(message.At(uid), message.Text("[ERROR]:你的技能CD记录失败\n", err))
+	}
+	// 输出结果
+	gifts := []string{"女装", "玫瑰花", "巧克力", "非洲之心", "睡衣", "玩偶", "咸鱼之王", "键盘", "保洁织的围巾", "机器人", "球鞋", "奥特曼", "Amongus", "鹅鸭杀", "明星商务套","猫耳头饰","方便面搓衣板","农药皮肤","一颗菠萝","一袋果冻"}
+	gift := gifts[rand.Intn(len(gifts))]
+	if mood == 0 {
+		ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了", gift, "送给了ta,ta很不喜欢,你们的好感度降低至", lastfavor))
+	} else {
+		ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了", gift, "送给了ta,ta很喜欢,你们的好感度升至", lastfavor))
+	}
 }
 
 func (sql *婚姻登记) 查好感度(uid, target int64) (int, error) {
