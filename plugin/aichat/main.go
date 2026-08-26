@@ -30,7 +30,10 @@ var (
 		DisableOnDefault: false,
 		Extra:            control.ExtraFromString("aichat"),
 		Brief:            "大模型聊天和Agent",
-		Help:             "- (随意聊天, 概率匹配)",
+		Help: "- (随意聊天, 概率匹配)\n" +
+			"- 设置AI聊天长期记忆[QQ号 ]内容\n" +
+			"- 查看AI聊天长期记忆[QQ号]\n" +
+			"- 清除AI聊天长期记忆[QQ号]",
 
 		PrivateDataFolder: "aichat",
 	}).ApplySingle(single.New(
@@ -62,6 +65,9 @@ func init() {
 		}
 		plainText := ctx.ExtractPlainText()
 		if plainText == "" {
+			return false
+		}
+		if isMemoryCommand(plainText) {
 			return false
 		}
 		gid := ctx.Event.GroupID
@@ -128,12 +134,10 @@ func init() {
 					role = goba.PermRoleOwner
 				}
 			}
-			c, ok := ctx.State["manager"].(*ctrl.Control[*zero.Ctx])
-			if !ok {
-				logrus.Warnln("ERROR: cannot get ctrl mamager")
-			}
-			ag := chat.AgentOf(ctx.Event.SelfID, c.Service)
+			ag := aichatAgentOf(ctx.Event.SelfID)
 			logrus.Debugln("[aichat] got agent")
+			setAgentMemoryUser(gid, ctx.Event.UserID)
+			defer unsetAgentMemoryUser(gid)
 			if chat.AC.ImageAPI != "" && !ag.CanViewImage() {
 				mod, err := chat.AC.ImageType.Protocol(chat.AC.ImageModelName, temperature, topp, maxn)
 				if err != nil {
@@ -211,12 +215,15 @@ func init() {
 			}
 			plainText := ctx.ExtractPlainText()
 			if plainText != "" {
-				contents = append(contents, model.NewContentText(plainText))
+				contents = append(contents, model.NewContentText(plainText+memorySystemText(ctx.Event.UserID)))
+			} else if mem := memorySystemText(ctx.Event.UserID); mem != "" {
+				contents = append(contents, model.NewContentText(strings.TrimSpace(mem)))
 			}
 			data, err = imgAPI.Request(imgMod.User(contents...))
 		} else {
 			// 普通文本聊天
-			data, err = x.Request(chat.GetChatContext(mod, gid, chat.AC.SystemP, bool(chat.AC.NoSystemP)))
+			sysp := chat.AC.SystemP + memorySystemText(ctx.Event.UserID)
+			data, err = x.Request(chat.GetChatContext(mod, gid, sysp, bool(chat.AC.NoSystemP)))
 		}
 		if err != nil {
 			logrus.Warnln("[aichat] post err:", err)

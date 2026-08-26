@@ -10,6 +10,8 @@ import (
 	"github.com/FloatTech/zbputils/chat"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
+
+	"github.com/FloatTech/ZeroBot-Plugin/plugin/aichat"
 )
 
 var (
@@ -174,6 +176,7 @@ func init() {
 		})
 	en.OnFullMatch("重置AI聊天Agent", chat.EnsureConfig, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		chat.ResetAgents()
+		aichat.ResetAichatAgents()
 		ctx.SendChain(message.Text("成功"))
 	})
 	en.OnFullMatch("重置AI聊天", chat.EnsureConfig, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {

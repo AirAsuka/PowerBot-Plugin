@@ -1478,6 +1478,9 @@ print("run[CQ:image,file="+j["img"]+"]")
   `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/aichat"`
 
   - [x] (随意聊天, 概率匹配)
+  - [x] 设置AI聊天长期记忆[QQ号 ]内容
+  - [x] 查看AI聊天长期记忆[QQ号]
+  - [x] 清除AI聊天长期记忆[QQ号]
 
 </details>
 <details>
