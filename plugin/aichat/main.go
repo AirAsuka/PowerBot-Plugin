@@ -51,6 +51,31 @@ var (
 	fastfailnorecord = false
 )
 
+const (
+	privateChatDirective = "\n\n【回复要求】当前是私聊，请直接、自然地回复对方的问题。"
+	atChatDirective      = "\n\n【回复要求】当前是群聊，最近一条以`>>`开头、直接@你的消息，是某位群友单独向你提问。请优先直接回答这条@你的问题，面向提问者回复；不要总结整个群聊，也不要逐一点名回复其他群友。只有当这个问题明显与上方群聊上下文相关时，才结合上下文并给出你的分析。"
+	idleChatDirective    = "\n\n【回复要求】当前是群聊，没有用户直接@你，你是在群里主动插话。请结合最近的群聊上下文，说一句符合你身份、自然接得上话的内容；可以表达你对当前话题的观点、补充信息或适度提问。不要总结整个群聊，也不要逐一点名回复。如果长期记忆显示当前发言用户与你关系亲密、好感度较高，可以主动打招呼或关心对方。"
+)
+
+// isAtSelf 判断群聊消息是否真的直接@了机器人本人。
+func isAtSelf(ctx *zero.Ctx) bool {
+	if !ctx.Event.IsToMe {
+		return false
+	}
+	return strings.Contains(ctx.Event.RawMessage, "[CQ:at,qq="+fmt.Sprint(ctx.Event.SelfID))
+}
+
+// aichatSystemDirective 根据当前消息类型返回本轮对话的行为要求。
+func aichatSystemDirective(ctx *zero.Ctx, isDirected bool) string {
+	if ctx.Event.GroupID == 0 {
+		return privateChatDirective
+	}
+	if isDirected {
+		return atChatDirective
+	}
+	return idleChatDirective
+}
+
 func init() {
 	en.OnMessage(chat.EnsureConfig, func(ctx *zero.Ctx) bool {
 		stor, ok := ctx.State[zero.StateKeyPrefixKeep+"aichatcfg_stor__"].(chat.Storage)
@@ -75,15 +100,7 @@ func init() {
 
 		// 检查消息中是否真的@了机器人（通过原始消息判断）
 		// ZeroBot 会将 [CQ:at,qq=xxx] 格式的@转换为 IsToMe=true，但需要防止误判
-		isReallyToMe := false
-		if ctx.Event.IsToMe {
-			// 检查原始消息是否包含 [CQ:at,qq=机器人QQ]
-			rawMsg := ctx.Event.RawMessage
-			// logrus.Infoln("[aichat] @检测: RawMessage=", rawMsg, "selfID=", ctx.Event.SelfID)
-			if strings.Contains(rawMsg, "[CQ:at,qq="+fmt.Sprint(ctx.Event.SelfID)) {
-				isReallyToMe = true
-			}
-		}
+		isReallyToMe := isAtSelf(ctx)
 		// logrus.Infoln("[aichat] @消息检测: isReallyToMe=", isReallyToMe, "NoReplyAt=", stor.NoReplyAt())
 
 		if isPrivate {
@@ -117,6 +134,8 @@ func init() {
 		temperature := stor.Temp()
 		topp, maxn := chat.AC.MParams()
 		mp := ctx.State[control.StateKeySyncxState].(*syncx.Map[string, any])
+		isDirected := gid == 0 || isAtSelf(ctx)
+		directive := aichatSystemDirective(ctx, isDirected)
 
 		logrus.Debugln("[aichat] agent mode test: noagent", stor.NoAgent(), "hasapi", chat.AC.AgentAPI != "", "hasmodel", chat.AC.AgentModelName != "")
 		if !stor.NoAgent() && chat.AC.AgentAPI != "" && chat.AC.AgentModelName != "" && chat.AC.Key != "" {
@@ -214,15 +233,14 @@ func init() {
 				contents = append(contents, model.NewContentImageURL(url))
 			}
 			plainText := ctx.ExtractPlainText()
-			if plainText != "" {
-				contents = append(contents, model.NewContentText(plainText+memorySystemText(ctx.Event.UserID)))
-			} else if mem := memorySystemText(ctx.Event.UserID); mem != "" {
-				contents = append(contents, model.NewContentText(strings.TrimSpace(mem)))
+			userPrompt := strings.TrimSpace(plainText + memorySystemText(ctx.Event.UserID) + directive)
+			if userPrompt != "" {
+				contents = append(contents, model.NewContentText(userPrompt))
 			}
 			data, err = imgAPI.Request(imgMod.User(contents...))
 		} else {
 			// 普通文本聊天
-			sysp := chat.AC.SystemP + memorySystemText(ctx.Event.UserID)
+			sysp := chat.AC.SystemP + memorySystemText(ctx.Event.UserID) + directive
 			data, err = x.Request(chat.GetChatContext(mod, gid, sysp, bool(chat.AC.NoSystemP)))
 		}
 		if err != nil {
@@ -237,7 +255,7 @@ func init() {
 			txt = strings.ReplaceAll(txt, "{name}", ctx.CardOrNickName(ctx.Event.UserID))
 			txt = strings.ReplaceAll(txt, "{me}", nick)
 			id := any(nil)
-			if ctx.Event.IsToMe {
+			if isDirected {
 				id = ctx.Event.MessageID
 			}
 			for _, t := range strings.Split(txt, "{segment}") {
