@@ -30,10 +30,7 @@ var (
 		DisableOnDefault: false,
 		Extra:            control.ExtraFromString("aichat"),
 		Brief:            "大模型聊天和Agent",
-		Help: "- (随意聊天, 概率匹配)\n" +
-			"- 设置AI聊天长期记忆[QQ号 ]内容\n" +
-			"- 查看AI聊天长期记忆[QQ号]\n" +
-			"- 清除AI聊天长期记忆[QQ号]",
+		Help:             "- (随意聊天, 概率匹配)",
 
 		PrivateDataFolder: "aichat",
 	}).ApplySingle(single.New(
@@ -92,9 +89,6 @@ func init() {
 		if plainText == "" {
 			return false
 		}
-		if isMemoryCommand(plainText) {
-			return false
-		}
 		gid := ctx.Event.GroupID
 		isPrivate := gid == 0
 
@@ -134,6 +128,7 @@ func init() {
 		temperature := stor.Temp()
 		topp, maxn := chat.AC.MParams()
 		mp := ctx.State[control.StateKeySyncxState].(*syncx.Map[string, any])
+		userText := ctx.ExtractPlainText()
 		isDirected := gid == 0 || isAtSelf(ctx)
 		directive := aichatSystemDirective(ctx, isDirected)
 
@@ -169,6 +164,7 @@ func init() {
 			ctx.NoTimeout()
 			logrus.Debugln("[aichat] agent set no timeout")
 			hasresp := false
+			var agentReply strings.Builder
 			for i := 0; i < 8; i++ { // 最大运行 8 轮因为问答上下文只有 16
 				reqs := chat.CallAgent(ag, zero.SuperUserPermission(ctx), i+1, x, mod, gid, role)
 				if len(reqs) == 0 {
@@ -180,6 +176,10 @@ func init() {
 				for _, req := range reqs {
 					if req.Action == goba.SVM { // is a fake action
 						continue
+					}
+					if t := extractRequestText(&req); t != "" {
+						agentReply.WriteString(t)
+						agentReply.WriteByte('\n')
 					}
 					logrus.Debugln("[chat] agent triggered", gid, "add requ:", &req)
 					ag.AddRequest(gid, &req)
@@ -193,6 +193,9 @@ func init() {
 						RetCode: rsp.RetCode,
 					})
 				}
+			}
+			if isDirected && agentReply.Len() > 0 {
+				go maybeSummarizeMemory(ctx.Event.UserID, userText, strings.TrimSpace(agentReply.String()))
 			}
 			if hasresp {
 				return
@@ -232,8 +235,7 @@ func init() {
 			for _, url := range imageURLs {
 				contents = append(contents, model.NewContentImageURL(url))
 			}
-			plainText := ctx.ExtractPlainText()
-			userPrompt := strings.TrimSpace(plainText + memorySystemText(ctx.Event.UserID) + directive)
+			userPrompt := strings.TrimSpace(userText + memorySystemText(ctx.Event.UserID) + directive)
 			if userPrompt != "" {
 				contents = append(contents, model.NewContentText(userPrompt))
 			}
@@ -279,6 +281,10 @@ func init() {
 					id = ctx.SendChain(message.Text(t))
 				}
 				process.SleepAbout1sTo2s()
+			}
+			if isDirected {
+				replyText := strings.ReplaceAll(txt, "{segment}", "")
+				go maybeSummarizeMemory(ctx.Event.UserID, userText, replyText)
 			}
 		}
 	})

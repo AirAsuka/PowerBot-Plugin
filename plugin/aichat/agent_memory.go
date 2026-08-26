@@ -8,6 +8,7 @@ import (
 
 	"github.com/RomiChan/syncx"
 	goba "github.com/fumiama/go-onebot-agent"
+	"github.com/tidwall/gjson"
 
 	"github.com/FloatTech/zbputils/chat"
 	zero "github.com/wdvxdr1123/ZeroBot"
@@ -25,7 +26,7 @@ func aichatAgentOf(id int64) *goba.Agent {
 	if ag, ok := userAgents.Load(id); ok {
 		return ag
 	}
-	ag := goba.NewAgent(chat.AgentCharConfig, 16, 8, time.Hour*24, "", getMemberMemory(), true, false)
+	ag := goba.NewAgent(chat.AgentCharConfig, 16, 8, time.Hour*24, "", getMemberMemory(), true, true)
 	userAgents.Store(id, &ag)
 	return &ag
 }
@@ -51,6 +52,22 @@ func agentMemoryUser(grp int64) int64 {
 		return userID.(int64)
 	}
 	return grp
+}
+
+// extractRequestText 提取 Agent 发送消息中的纯文本，用于后续记忆归纳。
+func extractRequestText(req *zero.APIRequest) string {
+	if req == nil || (req.Action != "send_group_msg" && req.Action != "send_private_msg") {
+		return ""
+	}
+	v := req.Params["message"]
+	if v == nil {
+		return ""
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return message.ParseMessageFromArray(gjson.Parse(string(b))).ExtractPlainText()
 }
 
 // aichatEvent 将 ZeroBot 事件转换成 Agent 可读的事件。

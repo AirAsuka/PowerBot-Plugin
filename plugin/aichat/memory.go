@@ -9,7 +9,10 @@ import (
 	"sync"
 )
 
-const memorySystemPrefix = "\n\n以下是该用户的历史长期记忆，请在后续对话中自然地参考：\n"
+const (
+	memorySystemPrefix = "\n\n以下是该用户的历史长期记忆，请在后续对话中自然地参考：\n"
+	maxMemoryRunes     = 500
+)
 
 var (
 	memberMemoryOnce  sync.Once
@@ -48,6 +51,34 @@ func (m *memberMemory) loadText(userID int64) string {
 	return strings.TrimSpace(string(data))
 }
 
+func sanitizeMemory(text string) string {
+	text = strings.TrimSpace(text)
+	text = strings.TrimPrefix(text, "```")
+	text = strings.TrimSuffix(text, "```")
+	text = strings.TrimSpace(text)
+	text = strings.TrimPrefix(text, "长期记忆：")
+	text = strings.TrimPrefix(text, "长期记忆:")
+	text = strings.TrimPrefix(text, "记忆：")
+	text = strings.TrimPrefix(text, "记忆:")
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) > maxMemoryRunes {
+		runes = runes[:maxMemoryRunes]
+		text = strings.TrimSpace(string(runes))
+	}
+	return text
+}
+
+func (m *memberMemory) set(userID int64, text string) error {
+	text = sanitizeMemory(text)
+	if text == "" {
+		return m.clear(userID)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return os.WriteFile(m.path(userID), []byte(text+"\n"), 0644)
+}
+
 // append 向该 QQ 号追加一条长期记忆。
 func (m *memberMemory) append(userID int64, text string) error {
 	text = strings.TrimSpace(text)
@@ -64,7 +95,20 @@ func (m *memberMemory) append(userID int64, text string) error {
 	if _, err = f.WriteString(text + "\n"); err != nil {
 		return err
 	}
-	return nil
+	return m.limitLocked(userID)
+}
+
+func (m *memberMemory) limitLocked(userID int64) error {
+	data, err := os.ReadFile(m.path(userID))
+	if err != nil {
+		return err
+	}
+	runes := []rune(strings.TrimSpace(string(data)))
+	if len(runes) <= maxMemoryRunes {
+		return nil
+	}
+	runes = runes[len(runes)-maxMemoryRunes:]
+	return os.WriteFile(m.path(userID), []byte(strings.TrimSpace(string(runes))+"\n"), 0644)
 }
 
 // Save 实现 goba.MemoryStorage，按当前对话对应的 QQ 号保存长期记忆。
