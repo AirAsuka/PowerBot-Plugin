@@ -17,9 +17,35 @@ import (
 
 var (
 	userAgents = syncx.Map[int64, *goba.Agent]{}
+	// directedUserAgents 为群聊中每个“群 + 用户”保存独立的 Agent 会话，
+	// 避免不同用户同时 @ 机器人时互相串上下文。
+	directedUserAgents = syncx.Map[directedAgentKey, *goba.Agent]{}
 	// agentMemoryUsers 记录某个 Agent 会话当前对应的 QQ 号。
 	agentMemoryUsers sync.Map
 )
+
+type directedAgentKey struct {
+	selfID  int64
+	groupID int64
+	userID  int64
+}
+
+// fixedUserMemory 将 Agent 的记忆读写固定到指定 QQ 号，不再依赖会话级映射。
+type fixedUserMemory struct {
+	userID int64
+}
+
+func (m fixedUserMemory) Save(_ int64, text string) error {
+	return getMemberMemory().append(m.userID, text)
+}
+
+func (m fixedUserMemory) Load(_ int64) []string {
+	mem := getMemberMemory().loadText(m.userID)
+	if mem == "" {
+		return nil
+	}
+	return []string{mem}
+}
 
 // aichatAgentOf 返回按 Bot 实例缓存的 Agent，其长期记忆使用按 QQ 号存储的 memberMemory。
 func aichatAgentOf(id int64) *goba.Agent {
@@ -31,10 +57,25 @@ func aichatAgentOf(id int64) *goba.Agent {
 	return &ag
 }
 
+// aichatDirectedAgentOf 返回群聊中某个用户定向提问专用的 Agent。
+func aichatDirectedAgentOf(selfID, groupID, userID int64) *goba.Agent {
+	key := directedAgentKey{selfID: selfID, groupID: groupID, userID: userID}
+	if ag, ok := directedUserAgents.Load(key); ok {
+		return ag
+	}
+	ag := goba.NewAgent(chat.AgentCharConfig, 16, 8, time.Hour*24, "", fixedUserMemory{userID: userID}, true, true)
+	directedUserAgents.Store(key, &ag)
+	return &ag
+}
+
 // ResetAichatAgents 清空按 QQ 号长期记忆对应的 Agent 实例缓存。
 func ResetAichatAgents() {
 	userAgents.Range(func(id int64, _ *goba.Agent) bool {
 		userAgents.Delete(id)
+		return true
+	})
+	directedUserAgents.Range(func(key directedAgentKey, _ *goba.Agent) bool {
+		directedUserAgents.Delete(key)
 		return true
 	})
 }

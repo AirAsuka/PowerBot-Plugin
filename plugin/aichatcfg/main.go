@@ -181,6 +181,7 @@ func init() {
 	})
 	en.OnFullMatch("重置AI聊天", chat.EnsureConfig, zero.SuperUserPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		chat.ResetChat()
+		aichat.ResetDirectedChats()
 		ctx.SendChain(message.Text("成功"))
 	})
 }

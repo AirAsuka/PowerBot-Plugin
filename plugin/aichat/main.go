@@ -50,7 +50,7 @@ var (
 
 const (
 	privateChatDirective = "\n\n【回复要求】当前是私聊，请直接、自然地回复对方的问题。"
-	atChatDirective      = "\n\n【回复要求】当前是群聊，最近一条以`>>`开头、直接@你的消息，是某位群友单独向你提问。请优先直接回答这条@你的问题，面向提问者回复；不要总结整个群聊，也不要逐一点名回复其他群友。只有当这个问题明显与上方群聊上下文相关时，才结合上下文并给出你的分析。"
+	atChatDirective      = "\n\n【回复要求】当前是群聊，最后一条以`>>`开头、直接@你的消息，是某位群友单独向你提问；这条消息之前可能附带了近期普通群聊上下文，供你理解大家正在讨论的话题。请优先直接回答这条@你的问题，面向提问者回复；不要总结整个群聊，也不要逐一点名回复其他群友。只有当这个问题明显与附带上下文相关时，才结合上下文给出你的分析。"
 	idleChatDirective    = "\n\n【回复要求】当前是群聊，没有用户直接@你，你是在群里主动插话。请结合最近的群聊上下文，说一句符合你身份、自然接得上话的内容；可以表达你对当前话题的观点、补充信息或适度提问。不要总结整个群聊，也不要逐一点名回复。如果长期记忆显示当前发言用户与你关系亲密、好感度较高，可以主动打招呼或关心对方。"
 )
 
@@ -129,7 +129,12 @@ func init() {
 		topp, maxn := chat.AC.MParams()
 		mp := ctx.State[control.StateKeySyncxState].(*syncx.Map[string, any])
 		userText := ctx.ExtractPlainText()
+		senderName := ctx.Event.Sender.Name()
+		if senderName == "" {
+			senderName = ctx.CardOrNickName(ctx.Event.UserID)
+		}
 		isDirected := gid == 0 || isAtSelf(ctx)
+		isGroupDirected := ctx.Event.GroupID != 0 && isDirected
 		directive := aichatSystemDirective(ctx, isDirected)
 
 		logrus.Debugln("[aichat] agent mode test: noagent", stor.NoAgent(), "hasapi", chat.AC.AgentAPI != "", "hasmodel", chat.AC.AgentModelName != "")
@@ -148,10 +153,18 @@ func init() {
 					role = goba.PermRoleOwner
 				}
 			}
-			ag := aichatAgentOf(ctx.Event.SelfID)
+			var ag *goba.Agent
+			if isGroupDirected {
+				ag = aichatDirectedAgentOf(ctx.Event.SelfID, ctx.Event.GroupID, ctx.Event.UserID)
+				if ev := aichatEvent(ctx); ev != nil {
+					ag.AddEvent(ctx.Event.GroupID, ev)
+				}
+			} else {
+				ag = aichatAgentOf(ctx.Event.SelfID)
+				setAgentMemoryUser(gid, ctx.Event.UserID)
+				defer unsetAgentMemoryUser(gid)
+			}
 			logrus.Debugln("[aichat] got agent")
-			setAgentMemoryUser(gid, ctx.Event.UserID)
-			defer unsetAgentMemoryUser(gid)
 			if chat.AC.ImageAPI != "" && !ag.CanViewImage() {
 				mod, err := chat.AC.ImageType.Protocol(chat.AC.ImageModelName, temperature, topp, maxn)
 				if err != nil {
@@ -243,7 +256,11 @@ func init() {
 		} else {
 			// 普通文本聊天
 			sysp := chat.AC.SystemP + memorySystemText(ctx.Event.UserID) + directive
-			data, err = x.Request(chat.GetChatContext(mod, gid, sysp, bool(chat.AC.NoSystemP)))
+			if isGroupDirected {
+				data, err = x.Request(buildDirectedChatRequest(mod, ctx.Event.GroupID, ctx.Event.UserID, senderName, userText, sysp, bool(chat.AC.NoSystemP)))
+			} else {
+				data, err = x.Request(chat.GetChatContext(mod, gid, sysp, bool(chat.AC.NoSystemP)))
+			}
 		}
 		if err != nil {
 			logrus.Warnln("[aichat] post err:", err)
@@ -253,6 +270,14 @@ func init() {
 		txt := chat.Sanitize(strings.Trim(data, "\n 　"))
 		if len(txt) > 0 {
 			chat.AddChatReply(gid, txt)
+			switch {
+			case isGroupDirected:
+				log := getDirectedChatLog(ctx.Event.GroupID, ctx.Event.UserID)
+				log.Add(0, directedUserItem(senderName, userText), false)
+				log.Add(0, directedChatItem(txt), true)
+			case ctx.Event.GroupID != 0:
+				getGroupChatLog(ctx.Event.GroupID).Add(0, directedChatItem(txt), true)
+			}
 			nick := zero.BotConfig.NickName[rand.Intn(len(zero.BotConfig.NickName))]
 			txt = strings.ReplaceAll(txt, "{name}", ctx.CardOrNickName(ctx.Event.UserID))
 			txt = strings.ReplaceAll(txt, "{me}", nick)
