@@ -38,6 +38,7 @@ type recentGame struct {
 	Duration     string
 	PlayerCount  int64
 	WinCondition string
+	Ordinal      int64
 }
 
 type paginationInfo struct {
@@ -84,43 +85,53 @@ func init() {
 				ctx.SendChain(message.Text("未查询到最近对局记录"))
 				return
 			}
-			ctx.SendChain(message.Text(formatRecentGames(user.AmongusID, games, pg)))
+			imgBytes, err := renderRecentGamesImage(user.AmongusID, games, pg)
+			if err != nil {
+				// 渲染失败则退回文本摘要
+				ctx.SendChain(message.Text(formatRecentGames(user.AmongusID, games, pg)))
+				return
+			}
+			ctx.SendChain(message.ImageBytes(imgBytes))
 		})
 
-	// 游戏详情 <gameId>
-	engine.OnRegex(`^游戏详情(?:\s+(.+))?$`, getDB).SetBlock(true).
+	// 游戏详情 <场次序号>
+	engine.OnRegex(`^游戏详情(?:\s*(?:第\s*)?([0-9]{1,6})\s*场?)?$`, getDB).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
-			gameID := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
-			if gameID == "" {
-				user, err := database.find(ctx.Event.UserID)
-				if err != nil || user.AmongusID == "" {
-					ctx.SendChain(message.Text("你还没有录入AmongUs ID，请先使用「录入信息 xxxx」绑定"))
+			ordinalText := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
+			var ordinal int64
+			if ordinalText != "" {
+				parsed, err := strconv.ParseInt(ordinalText, 10, 64)
+				if err != nil || parsed <= 0 {
+					ctx.SendChain(message.Text("参数错误：场次序号必须是大于0的整数"))
 					return
 				}
-
-				games, _, err := queryRecentGames(user.AmongusID, 1, 1)
-				if err != nil {
-					ctx.SendChain(message.Text("[amongus] 获取最近1场失败: ", err))
-					return
-				}
-				if len(games) == 0 || games[0].GameID == "" {
-					ctx.SendChain(message.Text("[amongus] 获取最近1场失败: 未找到有效对局ID"))
-					return
-				}
-				gameID = games[0].GameID
+				ordinal = parsed
 			}
 
-			detailResult, err := queryGameDetail(gameID)
+			user, err := database.find(ctx.Event.UserID)
+			if err != nil || user.AmongusID == "" {
+				ctx.SendChain(message.Text("你还没有录入AmongUs ID，请先使用「录入信息 xxxx」绑定"))
+				return
+			}
+
+			game, resolvedOrdinal, err := resolveGameByOrdinal(user.AmongusID, ordinal)
+			if err != nil {
+				ctx.SendChain(message.Text("[amongus] 获取对局失败: ", err))
+				return
+			}
+			label := fmt.Sprintf("第%d场", resolvedOrdinal)
+
+			detailResult, err := queryGameDetail(game.GameID)
 			if err != nil {
 				ctx.SendChain(message.Text("[amongus] 查询游戏详情失败: ", err))
 				return
 			}
 
 			// 生成摘要图片（全局信息 + 玩家信息）
-			imgBytes, err := renderGameDetailImage(gameID, detailResult)
+			imgBytes, err := renderGameDetailImage(label, detailResult)
 			if err != nil {
 				// 渲染失败则退回文本摘要（不再回传原始JSON）
-				ctx.SendChain(message.Text(formatGameDetailSummary(gameID, detailResult)))
+				ctx.SendChain(message.Text(formatGameDetailSummary(label, detailResult)))
 				return
 			}
 			ctx.SendChain(message.ImageBytes(imgBytes))
@@ -147,25 +158,83 @@ func queryRecentGames(amongusID string, page int, pageSize int) ([]recentGame, p
 		return nil, paginationInfo{}, errors.New(errorMessageFromResult(result, "查询最近对局失败"))
 	}
 
-	items := result.Get("data").Array()
-	games := make([]recentGame, 0, len(items))
-	for _, item := range items {
-		games = append(games, recentGame{
-			GameID:       item.Get("gameId").String(),
-			StartTime:    item.Get("startTime").String(),
-			Duration:     item.Get("duration").String(),
-			PlayerCount:  item.Get("playerCount").Int(),
-			WinCondition: item.Get("winCondition").String(),
-		})
-	}
-
 	pg := paginationInfo{
 		Page:       result.Get("pagination.page").Int(),
 		PageSize:   result.Get("pagination.pageSize").Int(),
 		Total:      result.Get("pagination.total").Int(),
 		TotalPages: result.Get("pagination.totalPages").Int(),
 	}
+
+	actualPage := pg.Page
+	if actualPage <= 0 {
+		actualPage = int64(page)
+	}
+	actualPageSize := pg.PageSize
+	if actualPageSize <= 0 {
+		actualPageSize = int64(pageSize)
+	}
+	offset := (actualPage - 1) * actualPageSize
+
+	items := result.Get("data").Array()
+	games := make([]recentGame, 0, len(items))
+	for i, item := range items {
+		game := recentGame{
+			GameID:       item.Get("gameId").String(),
+			StartTime:    item.Get("startTime").String(),
+			Duration:     item.Get("duration").String(),
+			PlayerCount:  item.Get("playerCount").Int(),
+			WinCondition: item.Get("winCondition").String(),
+			Ordinal:      pg.Total - offset - int64(i),
+		}
+		if game.Ordinal < 1 {
+			game.Ordinal = 0
+		}
+		games = append(games, game)
+	}
+
 	return games, pg, nil
+}
+
+func resolveGameByOrdinal(amongusID string, ordinal int64) (recentGame, int64, error) {
+	if ordinal == 0 {
+		games, _, err := queryRecentGames(amongusID, 1, 1)
+		if err != nil {
+			return recentGame{}, 0, err
+		}
+		if len(games) == 0 || games[0].GameID == "" {
+			return recentGame{}, 0, errors.New("未找到最近对局")
+		}
+		if games[0].Ordinal < 1 {
+			return recentGame{}, 0, errors.New("最近对局序号无效")
+		}
+		return games[0], games[0].Ordinal, nil
+	}
+
+	latest, pg, err := queryRecentGames(amongusID, 1, 1)
+	if err != nil {
+		return recentGame{}, 0, err
+	}
+	if pg.Total <= 0 || len(latest) == 0 {
+		return recentGame{}, 0, errors.New("未查询到任何对局记录")
+	}
+	if ordinal > pg.Total {
+		return recentGame{}, 0, fmt.Errorf("场次序号 %d 超出范围，当前总场次为 %d", ordinal, pg.Total)
+	}
+
+	// 最新一场是“第 total 场”，第 x 场对应查询接口的第 (total-x+1) 页。
+	page := int(pg.Total - ordinal + 1)
+	game := latest[0]
+	if page > 1 {
+		games, _, err := queryRecentGames(amongusID, page, 1)
+		if err != nil {
+			return recentGame{}, 0, err
+		}
+		if len(games) == 0 || games[0].GameID == "" {
+			return recentGame{}, 0, fmt.Errorf("未查询到第 %d 场对局", ordinal)
+		}
+		game = games[0]
+	}
+	return game, ordinal, nil
 }
 
 func formatRecentGames(amongusID string, games []recentGame, pg paginationInfo) string {
@@ -177,14 +246,188 @@ func formatRecentGames(amongusID string, games []recentGame, pg paginationInfo) 
 		if !ok {
 			winText = "未知"
 		}
-		sb.WriteString(fmt.Sprintf("| 游戏ID：%s | 开始时间：%s | 游戏时长：%s | 玩家数量：%d | 胜利信息：%s|\n",
-			game.GameID, game.StartTime, game.Duration, game.PlayerCount, winText))
+		ordinalText := "未知场次"
+		if game.Ordinal > 0 {
+			ordinalText = fmt.Sprintf("第%d场", game.Ordinal)
+		}
+		sb.WriteString(fmt.Sprintf("| %s | 开始时间：%s | 游戏时长：%s | 玩家数量：%d | 胜利信息：%s|\n",
+			ordinalText, game.StartTime, game.Duration, game.PlayerCount, winText))
 		sb.WriteString("=================================\n")
 	}
 	// 分页信息（来自 /api/query 的 pagination 字段）
 	sb.WriteString(fmt.Sprintf("页数：%d 页面数目：%d，总数：%d，总页数：%d\n",
 		pg.Page, pg.PageSize, pg.Total, pg.TotalPages))
 	return strings.TrimSpace(sb.String())
+}
+
+// renderRecentGamesImage 渲染最近对局列表图片：场次序号 / 开始时间 / 游戏时长 / 玩家数量 / 胜利信息
+func renderRecentGamesImage(amongusID string, games []recentGame, pg paginationInfo) ([]byte, error) {
+	const (
+		padding       = 40.0
+		titleSize     = 44.0
+		subTitleSize  = 32.0
+		headerSize    = 24.0
+		bodySize      = 22.0
+		rowH          = 62.0
+		cardRadius    = 18.0
+		lineW         = 2.0
+		tableHeaderH  = 56.0
+		sectionTopPad = 68.0
+		cardBottomPad = 28.0
+		footerH       = 48.0
+	)
+
+	colW := []float64{
+		160, // 场次
+		230, // 开始时间
+		150, // 游戏时长
+		110, // 玩家数量
+		160, // 胜利信息
+	}
+	tableW := 0.0
+	for _, w := range colW {
+		tableW += w
+	}
+
+	titleH := 70.0
+	sectionGap := 18.0
+	tableCardH := sectionTopPad + tableHeaderH + rowH*float64(len(games)) + cardBottomPad
+	canvasW := padding*2 + tableW
+	canvasH := padding + titleH + sectionGap + tableCardH + sectionGap + footerH + padding
+
+	c := gg.NewContext(int(canvasW), int(canvasH))
+	c.SetRGB255(245, 247, 250)
+	c.Clear()
+
+	boldFont, err := file.GetLazyData(text.BoldFontFile, control.Md5File, true)
+	if err != nil {
+		return nil, err
+	}
+	regularFont, err := file.GetLazyData(text.FontFile, control.Md5File, true)
+	if err != nil {
+		return nil, err
+	}
+
+	drawCard := func(x, y, w, h float64) {
+		c.SetRGBA255(255, 255, 255, 255)
+		c.DrawRoundedRectangle(x, y, w, h, cardRadius)
+		c.Fill()
+		c.SetRGBA255(0, 0, 0, 18)
+		c.SetLineWidth(lineW)
+		c.DrawRoundedRectangle(x, y, w, h, cardRadius)
+		c.Stroke()
+	}
+
+	cardW := canvasW - padding*2
+
+	// 标题卡片
+	drawCard(padding, padding, cardW, titleH)
+	if err = c.ParseFontFace(boldFont, titleSize); err != nil {
+		return nil, err
+	}
+	c.SetRGB255(30, 41, 59)
+	c.DrawStringAnchored(fmt.Sprintf("最近对局 - %s", amongusID), padding+20, padding+titleH/2, 0, 0.5)
+
+	// 对局列表卡片
+	tableX := padding
+	tableY := padding + titleH + sectionGap
+	drawCard(tableX, tableY, cardW, tableCardH)
+	if err = c.ParseFontFace(boldFont, subTitleSize); err != nil {
+		return nil, err
+	}
+	c.SetRGB255(15, 23, 42)
+	c.DrawStringAnchored("最近场次", tableX+20, tableY+36, 0, 0.5)
+
+	headerX := tableX + 20
+	headerY := tableY + sectionTopPad
+	c.SetRGBA255(15, 23, 42, 8)
+	c.DrawRoundedRectangle(headerX, headerY, tableW, tableHeaderH, 12)
+	c.Fill()
+
+	headers := []string{"场次", "开始时间", "游戏时长", "玩家数量", "胜利信息"}
+	if err = c.ParseFontFace(boldFont, headerSize); err != nil {
+		return nil, err
+	}
+	c.SetRGB255(51, 65, 85)
+	x := headerX
+	for i, h := range headers {
+		c.DrawStringAnchored(h, x+10, headerY+tableHeaderH/2, 0, 0.5)
+		x += colW[i]
+	}
+
+	rowStartY := headerY + tableHeaderH
+	for i, game := range games {
+		y := rowStartY + rowH*float64(i)
+		if i%2 == 0 {
+			c.SetRGBA255(148, 163, 184, 10)
+			c.DrawRectangle(headerX, y, tableW, rowH)
+			c.Fill()
+		}
+		c.SetRGBA255(148, 163, 184, 35)
+		c.SetLineWidth(1)
+		c.DrawLine(headerX, y+rowH, headerX+tableW, y+rowH)
+		c.Stroke()
+
+		ordinalLabel := "未知场次"
+		if game.Ordinal > 0 {
+			ordinalLabel = fmt.Sprintf("第%d场", game.Ordinal)
+		}
+		winLabel, ok := winConditionText[game.WinCondition]
+		if !ok {
+			winLabel = "未知"
+		}
+		cells := []string{
+			ordinalLabel,
+			game.StartTime,
+			game.Duration,
+			fmt.Sprintf("%d人", game.PlayerCount),
+			winLabel,
+		}
+
+		x = headerX
+		for ci, cell := range cells {
+			if ci == 0 {
+				if err = c.ParseFontFace(boldFont, bodySize); err != nil {
+					return nil, err
+				}
+				c.SetRGB255(37, 99, 235)
+			} else {
+				if err = c.ParseFontFace(regularFont, bodySize); err != nil {
+					return nil, err
+				}
+				c.SetRGB255(15, 23, 42)
+			}
+
+			align := gg.AlignLeft
+			anchorX := 0.0
+			drawX := x + 10
+			if ci == 0 || ci == 2 || ci == 3 {
+				align = gg.AlignCenter
+				anchorX = 0.5
+				drawX = x + colW[ci]/2
+			}
+			maxW := colW[ci] - 20
+			c.DrawStringWrapped(cell, drawX, y+rowH/2, anchorX, 0.5, maxW, 1.25, align)
+			x += colW[ci]
+		}
+	}
+
+	// 分页信息卡片
+	footerY := tableY + tableCardH + sectionGap
+	drawCard(padding, footerY, cardW, footerH)
+	if err = c.ParseFontFace(regularFont, bodySize); err != nil {
+		return nil, err
+	}
+	c.SetRGB255(71, 85, 105)
+	pageText := fmt.Sprintf("总场次：%d", pg.Total)
+	if pg.TotalPages > 0 {
+		pageText = fmt.Sprintf("总场次：%d · 第 %d/%d 页", pg.Total, pg.Page, pg.TotalPages)
+	} else if pg.Page > 0 {
+		pageText = fmt.Sprintf("总场次：%d · 第 %d 页", pg.Total, pg.Page)
+	}
+	c.DrawStringAnchored(pageText, padding+cardW/2, footerY+footerH/2, 0.5, 0.5)
+
+	return imgfactory.ToBytes(c.Image())
 }
 
 func queryGameDetail(gameID string) (gjson.Result, error) {
