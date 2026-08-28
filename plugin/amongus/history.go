@@ -251,7 +251,7 @@ func formatRecentGames(amongusID string, games []recentGame, pg paginationInfo) 
 			ordinalText = fmt.Sprintf("第%d场", game.Ordinal)
 		}
 		sb.WriteString(fmt.Sprintf("| %s | 开始时间：%s | 游戏时长：%s | 玩家数量：%d | 胜利信息：%s|\n",
-			ordinalText, game.StartTime, game.Duration, game.PlayerCount, winText))
+			ordinalText, formatGameStartTime(game.StartTime), game.Duration, game.PlayerCount, winText))
 		sb.WriteString("=================================\n")
 	}
 	// 分页信息（来自 /api/query 的 pagination 字段）
@@ -268,7 +268,7 @@ func renderRecentGamesImage(amongusID string, games []recentGame, pg paginationI
 		subTitleSize  = 32.0
 		headerSize    = 24.0
 		bodySize      = 22.0
-		rowH          = 62.0
+		rowH          = 68.0
 		cardRadius    = 18.0
 		lineW         = 2.0
 		tableHeaderH  = 56.0
@@ -378,7 +378,7 @@ func renderRecentGamesImage(amongusID string, games []recentGame, pg paginationI
 		}
 		cells := []string{
 			ordinalLabel,
-			game.StartTime,
+			formatGameStartTime(game.StartTime),
 			game.Duration,
 			fmt.Sprintf("%d人", game.PlayerCount),
 			winLabel,
@@ -494,6 +494,13 @@ func parseGameTime(s string) (time.Time, bool) {
 		return t2, true
 	}
 	return t, true
+}
+
+func formatGameStartTime(s string) string {
+	if t, ok := parseGameTime(s); ok {
+		return t.Format("2006-01-02\n15:04:05")
+	}
+	return strings.TrimSpace(s)
 }
 
 func parseHMSDurationToSeconds(s string) (int64, bool) {
