@@ -279,7 +279,7 @@ func renderRecentGamesImage(amongusID string, games []recentGame, pg paginationI
 
 	colW := []float64{
 		160, // 场次
-		230, // 开始时间
+		280, // 开始时间
 		150, // 游戏时长
 		110, // 玩家数量
 		160, // 胜利信息
@@ -483,22 +483,25 @@ func parseGameTime(s string) (time.Time, bool) {
 	if s == "" || s == "0001-01-01T00:00:00" {
 		return time.Time{}, false
 	}
-	// API 示例为无时区的 RFC3339-like
-	t, err := time.Parse("2006-01-02T15:04:05", s)
-	if err != nil {
-		// 兜底尝试 RFC3339
-		t2, err2 := time.Parse(time.RFC3339, s)
-		if err2 != nil {
-			return time.Time{}, false
-		}
-		return t2, true
+	layouts := []string{
+		"2006-01-02T15:04:05",
+		time.RFC3339,
+		time.RFC1123,
+		time.RFC1123Z,
+		time.RFC850,
+		time.ANSIC,
 	}
-	return t, true
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func formatGameStartTime(s string) string {
 	if t, ok := parseGameTime(s); ok {
-		return t.Format("2006-01-02\n15:04:05")
+		return t.Format("2006-01-02 15:04:05")
 	}
 	return strings.TrimSpace(s)
 }
