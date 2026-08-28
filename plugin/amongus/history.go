@@ -24,12 +24,16 @@ import (
 const (
 	queryAPI  = "https://toue.mxyx.club/api/query"
 	detailAPI = "https://toue.mxyx.club/api/detail/"
+	// 对外展示时间的格式（「最近n场」与「游戏详情」保持一致）
+	shanghaiTimeFormat = "2006-01-02 15:04:05"
 )
 
 var (
 	// 字典内容已迁移到子包 plugin/amongus/dict
 	winConditionText = amongusdict.WinConditionText
 	roleText         = amongusdict.RoleText
+	// 上海时区（东八区），用于将 API 返回的 UTC 时间转换为本地展示时间
+	shanghaiLoc = time.FixedZone("Asia/Shanghai", 8*60*60)
 )
 
 type recentGame struct {
@@ -501,9 +505,18 @@ func parseGameTime(s string) (time.Time, bool) {
 
 func formatGameStartTime(s string) string {
 	if t, ok := parseGameTime(s); ok {
-		return t.Format("2006-01-02 15:04:05")
+		// API 返回 UTC 时间，转换为上海时区展示
+		return t.In(shanghaiLoc).Format(shanghaiTimeFormat)
 	}
 	return strings.TrimSpace(s)
+}
+
+// formatShanghaiParsedTime 将已解析的时间转换为上海时区展示格式，解析失败时回退原始字符串
+func formatShanghaiParsedTime(t time.Time, ok bool, raw string) string {
+	if !ok {
+		return raw
+	}
+	return t.In(shanghaiLoc).Format(shanghaiTimeFormat)
 }
 
 func parseHMSDurationToSeconds(s string) (int64, bool) {
@@ -642,10 +655,10 @@ func formatGameDetailSummary(gameID string, detail gjson.Result) string {
 	players := detail.Get("data.Players").Array()
 
 	duration := global.Get("Duration").String()
-	startTimeStr := global.Get("StartTime").String()
-	endTimeStr := global.Get("EndTime").String()
-	startTime, okStart := parseGameTime(startTimeStr)
-	endTime, okEnd := parseGameTime(endTimeStr)
+	rawStartTime := global.Get("StartTime").String()
+	rawEndTime := global.Get("EndTime").String()
+	startTime, okStart := parseGameTime(rawStartTime)
+	endTime, okEnd := parseGameTime(rawEndTime)
 
 	// 兜底：如果 EndTime 解析失败，尝试用 Duration 推算
 	if okStart && !okEnd {
@@ -654,6 +667,9 @@ func formatGameDetailSummary(gameID string, detail gjson.Result) string {
 			okEnd = true
 		}
 	}
+	// 展示为上海时区，格式与「最近n场」一致
+	startTimeStr := formatShanghaiParsedTime(startTime, okStart, rawStartTime)
+	endTimeStr := formatShanghaiParsedTime(endTime, okEnd, rawEndTime)
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("游戏详情 - %s\n", gameID))
@@ -749,16 +765,19 @@ func renderGameDetailImage(gameID string, detail gjson.Result) ([]byte, error) {
 
 	// 解析时间用于“存活时间”
 	duration := global.Get("Duration").String()
-	startTimeStr := global.Get("StartTime").String()
-	endTimeStr := global.Get("EndTime").String()
-	startTime, okStart := parseGameTime(startTimeStr)
-	endTime, okEnd := parseGameTime(endTimeStr)
+	rawStartTime := global.Get("StartTime").String()
+	rawEndTime := global.Get("EndTime").String()
+	startTime, okStart := parseGameTime(rawStartTime)
+	endTime, okEnd := parseGameTime(rawEndTime)
 	if okStart && !okEnd {
 		if sec, ok := parseHMSDurationToSeconds(duration); ok {
 			endTime = startTime.Add(time.Duration(sec) * time.Second)
 			okEnd = true
 		}
 	}
+	// 展示为上海时区，格式与「最近n场」一致
+	startTimeStr := formatShanghaiParsedTime(startTime, okStart, rawStartTime)
+	endTimeStr := formatShanghaiParsedTime(endTime, okEnd, rawEndTime)
 	globalSec, okGlobalSec := parseHMSDurationToSeconds(duration)
 
 	// 画布布局

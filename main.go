@@ -103,6 +103,7 @@ import (
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/funny"             // 笑话
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/genshin"           // 原神抽卡
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/gif"        // 制图
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/greeter"    // 入群欢迎/退群欢送
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/guessmusic" // 猜歌
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/memes"      // 表情包制作
 
