@@ -54,6 +54,7 @@ var RoleText = map[string]string{
 	"Morphling":            "化形者",
 	"Bomber":               "炸弹狂",
 	"Mimic":                "模仿者",
+	"Copycat":              "效颦者",
 	"Camouflager":          "隐蔽者",
 	"Poucher":              "入殓师",
 	"Butcher":              "肢解者",

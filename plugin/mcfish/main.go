@@ -308,6 +308,29 @@ func (sql *fishdb) updateFishInfo(uid int64, number int) (residue int, err error
 	return
 }
 
+// getFishResidue 获取今日剩余可钓鱼次数
+func (sql *fishdb) getFishResidue(uid int64, number int) (residue int, err error) {
+	sql.Lock()
+	defer sql.Unlock()
+	userInfo := fishState{ID: uid}
+	err = sql.db.Create("fishState", &userInfo)
+	if err != nil {
+		return 0, err
+	}
+	_ = sql.db.Find("fishState", &userInfo, "WHERE ID = ?", uid)
+	if time.Unix(userInfo.Duration, 0).Day() != time.Now().Day() {
+		userInfo.Fish = 0
+	}
+	if userInfo.Fish >= FishLimit {
+		return 0, nil
+	}
+	residue = number
+	if userInfo.Fish+number > FishLimit {
+		residue = FishLimit - userInfo.Fish
+	}
+	return
+}
+
 // 更新诅咒
 func (sql *fishdb) updateCurseFor(uid int64, info string, number int) (err error) {
 	if number < 1 {

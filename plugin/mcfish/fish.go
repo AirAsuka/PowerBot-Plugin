@@ -102,18 +102,18 @@ func init() {
 		if equipInfo.Durable < fishNumber {
 			fishNumber = equipInfo.Durable
 		}
-		residue, err := dbdata.updateFishInfo(uid, fishNumber)
-		if err != nil {
-			ctx.SendChain(message.Text("[ERROR at fish.go.1]:", err))
-			return
-		}
-		if residue == 0 {
-			ctx.SendChain(message.Text("今天你已经进行", FishLimit, "次钓鱼了.\n游戏虽好,但请不要沉迷。"))
-			return
-		}
-		fishNumber = residue
 		msg := ""
 		if equipInfo.Equip != "美西螈" {
+			residue, err := dbdata.updateFishInfo(uid, fishNumber)
+			if err != nil {
+				ctx.SendChain(message.Text("[ERROR at fish.go.1]:", err))
+				return
+			}
+			if residue == 0 {
+				ctx.SendChain(message.Text("今天你已经进行", FishLimit, "次钓鱼了.\n游戏虽好,但请不要沉迷。"))
+				return
+			}
+			fishNumber = residue
 			equipInfo.Durable -= fishNumber
 			err = dbdata.updateUserEquip(equipInfo)
 			if err != nil {
@@ -129,6 +129,16 @@ func init() {
 				fishNumber *= 3
 			}
 		} else {
+			residue, err := dbdata.getFishResidue(uid, fishNumber)
+			if err != nil {
+				ctx.SendChain(message.Text("[ERROR at fish.go.1]:", err))
+				return
+			}
+			if residue == 0 {
+				ctx.SendChain(message.Text("今天你已经进行", FishLimit, "次钓鱼了.\n游戏虽好,但请不要沉迷。"))
+				return
+			}
+			fishNumber = residue
 			fishNames, err := dbdata.pickFishFor(uid, fishNumber*3)
 			if err != nil {
 				ctx.SendChain(message.Text("[ERROR at fish.go.5.1]:", err))
@@ -144,13 +154,19 @@ func init() {
 				return
 			}
 			msg = "(美西螈掉落翻5倍，吃3倍鱼：\n吃掉了："
-			fishNumber = 0
+			actualFishNumber := 0
 			for name, number := range fishNames {
-				fishNumber += number
+				actualFishNumber += number
 				msg += strconv.Itoa(number) + name + " "
 			}
 			msg += ")"
-			fishNumber /= 3
+			fishNumber = actualFishNumber / 3
+			residue, err = dbdata.updateFishInfo(uid, fishNumber)
+			if err != nil {
+				ctx.SendChain(message.Text("[ERROR at fish.go.1]:", err))
+				return
+			}
+			fishNumber = residue
 		}
 		waitTime := 120 / (equipInfo.Induce + 1)
 		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("你开始去钓鱼了,请耐心等待鱼上钩(预计要", time.Second*time.Duration(waitTime), ")"))

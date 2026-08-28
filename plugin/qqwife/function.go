@@ -95,76 +95,18 @@ func init() {
 	// 单身技能
 	engine.OnMessage(zero.NewPattern(nil).Text(`^(娶|嫁)`).At().AsRule(), zero.OnlyGroup, getdb, checkSingleDog).SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			gid := ctx.Event.GroupID
-			uid := ctx.Event.UserID
 			patternParsed := ctx.State[zero.KeyPattern].([]zero.PatternParsed)
 			choice := patternParsed[0].Text()[0]
 			fiancee, _ := strconv.ParseInt(patternParsed[1].At(), 10, 64)
-			// 写入CD
-			err := 民政局.记录CD(gid, uid, "嫁娶")
-			if err != nil {
-				ctx.SendChain(message.At(uid), message.Text("[qqwife]你的技能CD记录失败\n", err))
-			}
-			if uid == fiancee { // 如果是自己
-				switch rand.Intn(3) {
-				case 1:
-					err := 民政局.登记(gid, uid, 0, "", "")
-					if err != nil {
-						ctx.SendChain(message.Text("[ERROR]:", err))
-						return
-					}
-					ctx.SendChain(message.Text("今日获得成就：单身贵族"))
-				default:
-					ctx.SendChain(message.Text("今日获得成就：自恋狂"))
-				}
-				return
-			}
-			favor, err := 民政局.查好感度(uid, fiancee)
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:", err))
-				return
-			}
-			if favor < 30 {
-				favor = 30 // 保底30%概率
-			}
-			if rand.Intn(101) >= favor {
-				ctx.SendChain(message.Text(sendtext[1][rand.Intn(len(sendtext[1]))]))
-				return
-			}
-			// 去民政局登记
-			var choicetext string
-			switch choice {
-			case "娶":
-				err := 民政局.登记(gid, uid, fiancee, ctx.CardOrNickName(uid), ctx.CardOrNickName(fiancee))
-				if err != nil {
-					ctx.SendChain(message.Text("[ERROR]:", err))
-					return
-				}
-				choicetext = "\n今天你的群老婆是"
-			default:
-				err := 民政局.登记(gid, fiancee, uid, ctx.CardOrNickName(fiancee), ctx.CardOrNickName(uid))
-				if err != nil {
-					ctx.SendChain(message.Text("[ERROR]:", err))
-					return
-				}
-				choicetext = "\n今天你的群老公是"
-			}
-			favor, err = 民政局.更新好感度(uid, fiancee, 1+rand.Intn(5))
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:", err))
-			}
-			// 请大家吃席
-			ctx.SendChain(
-				message.Text(sendtext[0][rand.Intn(len(sendtext[0]))]),
-				message.At(uid),
-				message.Text(choicetext),
-				message.Image("https://q4.qlogo.cn/g?b=qq&nk="+strconv.FormatInt(fiancee, 10)+"&s=640").Add("cache", 0),
-				message.Text(
-					"\n",
-					"[", ctx.CardOrNickName(fiancee), "]",
-					"(", fiancee, ")哒\n当前你们好感度为", favor,
-				),
-			)
+			marry(ctx, choice, fiancee)
+		})
+	// 单身技能(直接填QQ号)
+	engine.OnRegex(`^(娶|嫁)(\d+)`, zero.OnlyGroup, getdb, checkSingleDogByNumber).SetBlock(true).Limit(ctxext.LimitByUser).
+		Handle(func(ctx *zero.Ctx) {
+			matched := ctx.State["regex_matched"].([]string)
+			choice := matched[1]
+			fiancee, _ := strconv.ParseInt(matched[2], 10, 64)
+			marry(ctx, choice, fiancee)
 		})
 	// NTR技能
 	engine.OnMessage(zero.NewPattern(nil).Text(`^当`).At().Text(`的小三`).AsRule(), zero.OnlyGroup, getdb, checkMistress).SetBlock(true).Limit(ctxext.LimitByUser).
@@ -255,67 +197,18 @@ func init() {
 	// 做媒技能
 	engine.OnMessage(zero.NewPattern(nil).Text(`做媒`).At().At().AsRule(), getdb, checkMatchmaker).SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			gid := ctx.Event.GroupID
-			uid := ctx.Event.UserID
 			patternParsed := ctx.State[zero.KeyPattern].([]zero.PatternParsed)
 			gayOne, _ := strconv.ParseInt(patternParsed[1].At(), 10, 64)
 			gayZero, _ := strconv.ParseInt(patternParsed[2].At(), 10, 64)
-			// 写入CD
-			err := 民政局.记录CD(gid, uid, "做媒")
-			if err != nil {
-				ctx.SendChain(message.At(uid), message.Text("[qqwife]你的技能CD记录失败\n", err))
-			}
-			favor, err := 民政局.查好感度(gayOne, gayZero)
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:", err))
-				return
-			}
-			if favor < 30 {
-				favor = 30 // 保底30%概率
-			}
-			if rand.Intn(101) >= favor {
-				_, err = 民政局.更新好感度(uid, gayOne, -1)
-				if err != nil {
-					ctx.SendChain(message.Text("[ERROR]:", err))
-				}
-				_, err = 民政局.更新好感度(uid, gayZero, -1)
-				if err != nil {
-					ctx.SendChain(message.Text("[ERROR]:", err))
-				}
-				ctx.SendChain(message.Text(sendtext[1][rand.Intn(len(sendtext[1]))]))
-				return
-			}
-			// 去民政局登记
-			err = 民政局.登记(gid, gayOne, gayZero, ctx.CardOrNickName(gayOne), ctx.CardOrNickName(gayZero))
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:", err))
-				return
-			}
-			_, err = 民政局.更新好感度(uid, gayOne, 1)
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:", err))
-			}
-			_, err = 民政局.更新好感度(uid, gayZero, 1)
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:", err))
-			}
-			_, err = 民政局.更新好感度(gayOne, gayZero, 1)
-			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:", err))
-			}
-			// 请大家吃席
-			ctx.SendChain(
-				message.At(uid),
-				message.Text("恭喜你成功撮合了一对CP\n\n"),
-				message.At(gayOne),
-				message.Text("今天你的群老婆是"),
-				message.Image("https://q4.qlogo.cn/g?b=qq&nk="+strconv.FormatInt(gayZero, 10)+"&s=640").Add("cache", 0),
-				message.Text(
-					"\n",
-					"[", ctx.CardOrNickName(gayZero), "]",
-					"(", gayZero, ")哒",
-				),
-			)
+			matchmake(ctx, gayOne, gayZero)
+		})
+	// 做媒技能(直接填QQ号)
+	engine.OnRegex(`^做媒\s*(\d+)\s*(\d+)`, getdb, checkMatchmakerByNumber).SetBlock(true).Limit(ctxext.LimitByUser).
+		Handle(func(ctx *zero.Ctx) {
+			matched := ctx.State["regex_matched"].([]string)
+			gayOne, _ := strconv.ParseInt(matched[1], 10, 64)
+			gayZero, _ := strconv.ParseInt(matched[2], 10, 64)
+			matchmake(ctx, gayOne, gayZero)
 		})
 	engine.OnFullMatchGroup([]string{"闹离婚", "办离婚"}, zero.OnlyGroup, getdb, checkDivorce).Limit(ctxext.LimitByUser).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
@@ -415,16 +308,30 @@ func (sql *婚姻登记) 离婚休夫(gid, husband int64) error {
 
 // 注入判断 是否单身条件
 func checkSingleDog(ctx *zero.Ctx) bool {
-	gid := ctx.Event.GroupID
-	uid := ctx.Event.UserID
 	patternParsed := ctx.State[zero.KeyPattern].([]zero.PatternParsed)
 	fiancee, err := strconv.ParseInt(patternParsed[1].At(), 10, 64)
 	if err != nil {
 		ctx.SendChain(message.Text("额,你的target好像不存在?"))
 		return false
 	}
+	return checkSingleDogWithTarget(ctx, fiancee)
+}
+
+// 注入判断 是否单身条件(直接填QQ号)
+func checkSingleDogByNumber(ctx *zero.Ctx) bool {
+	fiancee, err := strconv.ParseInt(ctx.State["regex_matched"].([]string)[2], 10, 64)
+	if err != nil {
+		ctx.SendChain(message.Text("额,你的target好像不存在?"))
+		return false
+	}
+	return checkSingleDogWithTarget(ctx, fiancee)
+}
+
+func checkSingleDogWithTarget(ctx *zero.Ctx, fiancee int64) bool {
+	gid := ctx.Event.GroupID
+	uid := ctx.Event.UserID
 	// 判断是否需要重置
-	err = 民政局.开门时间(gid)
+	err := 民政局.开门时间(gid)
 	if err != nil {
 		ctx.SendChain(message.Text("[ERROR]:", err))
 		return false
@@ -478,6 +385,77 @@ func checkSingleDog(ctx *zero.Ctx) bool {
 		return false
 	}
 	return true
+}
+
+// marry 娶/嫁核心逻辑
+func marry(ctx *zero.Ctx, choice string, fiancee int64) {
+	gid := ctx.Event.GroupID
+	uid := ctx.Event.UserID
+	// 写入CD
+	err := 民政局.记录CD(gid, uid, "嫁娶")
+	if err != nil {
+		ctx.SendChain(message.At(uid), message.Text("[qqwife]你的技能CD记录失败\n", err))
+	}
+	if uid == fiancee { // 如果是自己
+		switch rand.Intn(3) {
+		case 1:
+			err := 民政局.登记(gid, uid, 0, "", "")
+			if err != nil {
+				ctx.SendChain(message.Text("[ERROR]:", err))
+				return
+			}
+			ctx.SendChain(message.Text("今日获得成就：单身贵族"))
+		default:
+			ctx.SendChain(message.Text("今日获得成就：自恋狂"))
+		}
+		return
+	}
+	favor, err := 民政局.查好感度(uid, fiancee)
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:", err))
+		return
+	}
+	if favor < 30 {
+		favor = 30 // 保底30%概率
+	}
+	if rand.Intn(101) >= favor {
+		ctx.SendChain(message.Text(sendtext[1][rand.Intn(len(sendtext[1]))]))
+		return
+	}
+	// 去民政局登记
+	var choicetext string
+	switch choice {
+	case "娶":
+		err := 民政局.登记(gid, uid, fiancee, ctx.CardOrNickName(uid), ctx.CardOrNickName(fiancee))
+		if err != nil {
+			ctx.SendChain(message.Text("[ERROR]:", err))
+			return
+		}
+		choicetext = "\n今天你的群老婆是"
+	default:
+		err := 民政局.登记(gid, fiancee, uid, ctx.CardOrNickName(fiancee), ctx.CardOrNickName(uid))
+		if err != nil {
+			ctx.SendChain(message.Text("[ERROR]:", err))
+			return
+		}
+		choicetext = "\n今天你的群老公是"
+	}
+	favor, err = 民政局.更新好感度(uid, fiancee, 1+rand.Intn(5))
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:", err))
+	}
+	// 请大家吃席
+	ctx.SendChain(
+		message.Text(sendtext[0][rand.Intn(len(sendtext[0]))]),
+		message.At(uid),
+		message.Text(choicetext),
+		message.Image("https://q4.qlogo.cn/g?b=qq&nk="+strconv.FormatInt(fiancee, 10)+"&s=640").Add("cache", 0),
+		message.Text(
+			"\n",
+			"[", ctx.CardOrNickName(fiancee), "]",
+			"(", fiancee, ")哒\n当前你们好感度为", favor,
+		),
+	)
 }
 
 // 注入判断 是否满足小三要求
@@ -579,8 +557,6 @@ func checkDivorce(ctx *zero.Ctx) bool {
 }
 
 func checkMatchmaker(ctx *zero.Ctx) bool {
-	gid := ctx.Event.GroupID
-	uid := ctx.Event.UserID
 	patternParsed := ctx.State[zero.KeyPattern].([]zero.PatternParsed)
 	gayOne, err := strconv.ParseInt(patternParsed[1].At(), 10, 64)
 	if err != nil {
@@ -592,6 +568,28 @@ func checkMatchmaker(ctx *zero.Ctx) bool {
 		ctx.SendChain(message.Text("额，受方好像不存在？"))
 		return false
 	}
+	return checkMatchmakerWithTargets(ctx, gayOne, gayZero)
+}
+
+// 注入判断 是否满足做媒条件(直接填QQ号)
+func checkMatchmakerByNumber(ctx *zero.Ctx) bool {
+	matched := ctx.State["regex_matched"].([]string)
+	gayOne, err := strconv.ParseInt(matched[1], 10, 64)
+	if err != nil {
+		ctx.SendChain(message.Text("额，攻方好像不存在？"))
+		return false
+	}
+	gayZero, err := strconv.ParseInt(matched[2], 10, 64)
+	if err != nil {
+		ctx.SendChain(message.Text("额，受方好像不存在？"))
+		return false
+	}
+	return checkMatchmakerWithTargets(ctx, gayOne, gayZero)
+}
+
+func checkMatchmakerWithTargets(ctx *zero.Ctx, gayOne, gayZero int64) bool {
+	gid := ctx.Event.GroupID
+	uid := ctx.Event.UserID
 	if gayOne == uid || gayZero == uid {
 		ctx.SendChain(message.Text("禁止自己给自己做媒!"))
 		return false
@@ -601,7 +599,7 @@ func checkMatchmaker(ctx *zero.Ctx) bool {
 		return false
 	}
 	// 判断是否需要重置
-	err = 民政局.开门时间(gid)
+	err := 民政局.开门时间(gid)
 	if err != nil {
 		ctx.SendChain(message.Text("[ERROR]:", err))
 		return false
@@ -644,4 +642,66 @@ func checkMatchmaker(ctx *zero.Ctx) bool {
 		return false
 	}
 	return true
+}
+
+// matchmake 做媒核心逻辑
+func matchmake(ctx *zero.Ctx, gayOne, gayZero int64) {
+	gid := ctx.Event.GroupID
+	uid := ctx.Event.UserID
+	// 写入CD
+	err := 民政局.记录CD(gid, uid, "做媒")
+	if err != nil {
+		ctx.SendChain(message.At(uid), message.Text("[qqwife]你的技能CD记录失败\n", err))
+	}
+	favor, err := 民政局.查好感度(gayOne, gayZero)
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:", err))
+		return
+	}
+	if favor < 30 {
+		favor = 30 // 保底30%概率
+	}
+	if rand.Intn(101) >= favor {
+		_, err = 民政局.更新好感度(uid, gayOne, -1)
+		if err != nil {
+			ctx.SendChain(message.Text("[ERROR]:", err))
+		}
+		_, err = 民政局.更新好感度(uid, gayZero, -1)
+		if err != nil {
+			ctx.SendChain(message.Text("[ERROR]:", err))
+		}
+		ctx.SendChain(message.Text(sendtext[1][rand.Intn(len(sendtext[1]))]))
+		return
+	}
+	// 去民政局登记
+	err = 民政局.登记(gid, gayOne, gayZero, ctx.CardOrNickName(gayOne), ctx.CardOrNickName(gayZero))
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:", err))
+		return
+	}
+	_, err = 民政局.更新好感度(uid, gayOne, 1)
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:", err))
+	}
+	_, err = 民政局.更新好感度(uid, gayZero, 1)
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:", err))
+	}
+	_, err = 民政局.更新好感度(gayOne, gayZero, 1)
+	if err != nil {
+		ctx.SendChain(message.Text("[ERROR]:", err))
+	}
+	// 请大家吃席
+	ctx.SendChain(
+		message.At(uid),
+		message.Text("恭喜你成功撮合了一对CP\n\n"),
+		message.At(gayOne),
+		message.Text("今天你的群老婆是"),
+		message.Image("https://q4.qlogo.cn/g?b=qq&nk="+strconv.FormatInt(gayZero, 10)+"&s=640").Add("cache", 0),
+		message.Text(
+			"\n",
+			"[", ctx.CardOrNickName(gayZero), "]",
+			"(", gayZero, ")哒",
+		),
+	)
 }

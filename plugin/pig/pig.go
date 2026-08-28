@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -194,6 +195,10 @@ func checkAndUpdateData() error {
 func (img *pigImage) fetch() ([]byte, error) {
 	if img.Filename == "" {
 		return nil, errors.New("图片数据异常，缺少文件名")
+	}
+
+	if err := os.MkdirAll(engine.DataFolder()+"assets", 0755); err != nil {
+		return nil, errors.New("创建图片目录失败: " + err.Error())
 	}
 
 	targetPath := "assets/" + img.Filename
