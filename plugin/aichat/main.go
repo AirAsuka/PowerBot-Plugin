@@ -22,6 +22,7 @@ import (
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/chat"
 	"github.com/FloatTech/zbputils/control"
+	"github.com/FloatTech/zbputils/ctxext"
 )
 
 var (
@@ -55,6 +56,10 @@ const (
 	idleChatDirective    = "\n\n【回复要求】当前是群聊，没有用户直接@你，你是在群里主动插话。请结合最近的群聊上下文，说一句符合你身份、自然接得上话的内容；可以表达你对当前话题的观点、补充信息或适度提问。不要总结整个群聊，也不要逐一点名回复。如果长期记忆显示当前发言用户与你关系亲密、好感度较高，可以主动打招呼或关心对方。"
 )
 
+// BitmapPpri 私聊响应开关位(0x080000 起, 与 zbputils/chat 已用位 0x010000~0x040000 不冲突):
+// 置 1 表示响应私聊, 默认 0 表示私聊默认不启动 aichat。
+const BitmapPpri = 0x080000
+
 // isAtSelf 判断群聊消息是否真的直接@了机器人本人。
 func isAtSelf(ctx *zero.Ctx) bool {
 	if !ctx.Event.IsToMe {
@@ -72,6 +77,11 @@ func aichatSystemDirective(ctx *zero.Ctx, isDirected bool) string {
 		return atChatDirective
 	}
 	return idleChatDirective
+}
+
+// ReplyPrivate 返回当前会话是否响应私聊(默认 false 即不响应)。
+func ReplyPrivate(stor chat.Storage) bool {
+	return ctxext.Storage(stor).GetBool(BitmapPpri)
 }
 
 // sanitizeAIReply 清洗 AI 返回文本：只保留第一行、去掉开头的发言前缀（如【名字】或[名字]）。
@@ -152,7 +162,10 @@ func init() {
 		// logrus.Infoln("[aichat] @消息检测: isReallyToMe=", isReallyToMe, "NoReplyAt=", stor.NoReplyAt())
 
 		if isPrivate {
-			// 私聊：每条都响应
+			// 私聊：默认不启动, 需通过"设置AI聊天响应私聊"开启
+			if !ReplyPrivate(stor) {
+				return false
+			}
 			ctx.Block()
 			return true
 		}

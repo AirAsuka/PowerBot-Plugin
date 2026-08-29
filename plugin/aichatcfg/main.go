@@ -38,6 +38,7 @@ var (
 			"- 重置AI聊天Agent性格性别\n" +
 			"- 设置AI聊天分隔符</think>(留空则清除)\n" +
 			"- 设置AI聊天(不)响应AT\n" +
+			"- 设置AI聊天(不)响应私聊\n" +
 			"- 设置AI聊天最大长度4096\n" +
 			"- 设置AI聊天TopP 0.9\n" +
 			"- 设置AI聊天(不)以AI语音输出\n" +
@@ -141,6 +142,30 @@ func init() {
 		Handle(chat.NewExtraSetStr(&chat.AC.Separator))
 	en.OnRegex("^设置AI聊天(不)?响应AT$", zero.SuperUserPermission).SetBlock(true).
 		Handle(ctxext.NewStorageSaveBoolHandler(chat.BitmapNrat))
+	en.OnRegex("^设置AI聊天(不)?响应私聊$", zero.AdminPermission).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			args := ctx.State["regex_matched"].([]string)
+			on := args[1] == "" // "设置AI聊天响应私聊" 开启, "设置AI聊天不响应私聊" 关闭
+			gid := ctx.Event.GroupID
+			if gid == 0 {
+				gid = -ctx.Event.UserID
+			}
+			stor, err := chat.NewStorage(ctx, gid)
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR: ", err))
+				return
+			}
+			v := int64(0)
+			if on {
+				v = 1
+			}
+			err = ctxext.Storage(stor).Set(v, aichat.BitmapPpri).SaveTo(ctx, gid)
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR: set data err: ", err))
+				return
+			}
+			ctx.SendChain(message.Text("成功设置为", on))
+		})
 	en.OnRegex("^设置AI聊天(不)?支持系统提示词$", chat.EnsureConfig, zero.OnlyPrivate, zero.SuperUserPermission).SetBlock(true).
 		Handle(chat.NewExtraSetBool(&chat.AC.NoSystemP))
 	en.OnRegex("^设置AI聊天(不)?使用Agent模式$", zero.SuperUserPermission).SetBlock(true).
@@ -170,6 +195,7 @@ func init() {
 					"• 以AI语音输出：", chat.ModelBool(!stor.NoRecord()), "\n",
 					"• 使用Agent：", chat.ModelBool(!stor.NoAgent()), "\n",
 					"• 响应@：", chat.ModelBool(!stor.NoReplyAt()), "\n",
+					"• 响应私聊：", chat.ModelBool(aichat.ReplyPrivate(stor)), "\n",
 				),
 				message.Text("【当前AI聊天全局配置】\n", &chat.AC),
 			)
