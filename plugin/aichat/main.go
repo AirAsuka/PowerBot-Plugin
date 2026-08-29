@@ -74,6 +74,59 @@ func aichatSystemDirective(ctx *zero.Ctx, isDirected bool) string {
 	return idleChatDirective
 }
 
+// sanitizeAIReply 清洗 AI 返回文本：只保留第一行、去掉开头的发言前缀（如【名字】或[名字]）。
+//
+// 与 zbputils/chat.Sanitize 的区别：前缀匹配锚定在消息开头（HasPrefix + 第一个闭合括号），
+// 而不是用 LastIndex 找全串最后一个 "]" 再截断。后者会把正文中合法的方括号
+// （例如指令参数「钱包转账[金额][@xxx]」）误判为发言前缀的结尾，导致整条回复
+// 被截成只剩结尾的半截消息（如 "&#93;」消息喵"）。
+func sanitizeAIReply(msg string) string {
+	msg, _, _ = strings.Cut(msg, "\n")
+	msg = strings.TrimSpace(msg)
+	for _, p := range []struct{ l, r string }{{"【", "】"}, {"[", "]"}} {
+		if !strings.HasPrefix(msg, p.l) {
+			continue
+		}
+		rest := msg[len(p.l):]
+		if i := strings.Index(rest, p.r); i >= 0 {
+			msg = strings.TrimSpace(rest[i+len(p.r):])
+		}
+		break
+	}
+	if s, n := findRepeatedPattern(msg, 10); n > 0 {
+		return s
+	}
+	return msg
+}
+
+// findRepeatedPattern 查找字符串中连续重复次数超过 n 的子串（防止 AI 复读刷屏）。
+func findRepeatedPattern(s string, n int) (string, int) {
+	runes := []rune(s) // 将字符串转换为 rune 切片，支持 Unicode 字符
+	length := len(runes)
+
+	// 遍历所有可能的子串长度，从 1 到字符串长度的一半
+	for size := 1; size <= length/2; size++ {
+		// 遍历字符串的每个起始位置
+		for i := 0; i <= length-size*n; i++ {
+			pattern := runes[i : i+size] // 当前子串模式
+			count := 1                   // 初始化重复次数
+
+			// 检查后续是否连续出现相同的子串
+			for j := i + size; j+size <= length; j += size {
+				if string(runes[j:j+size]) == string(pattern) {
+					count++
+					if count >= n {
+						return string(pattern), count
+					}
+				} else {
+					break
+				}
+			}
+		}
+	}
+	return "", 0 // 未找到满足条件的重复子串
+}
+
 func init() {
 	en.OnMessage(chat.EnsureConfig, func(ctx *zero.Ctx) bool {
 		stor, ok := ctx.State[zero.StateKeyPrefixKeep+"aichatcfg_stor__"].(chat.Storage)
@@ -268,7 +321,7 @@ func init() {
 			return
 		}
 
-		txt := chat.Sanitize(strings.Trim(data, "\n 　"))
+		txt := sanitizeAIReply(data)
 		if len(txt) > 0 {
 			chat.AddChatReply(gid, txt)
 			switch {
