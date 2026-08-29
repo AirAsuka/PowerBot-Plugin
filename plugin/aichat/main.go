@@ -30,7 +30,8 @@ var (
 		DisableOnDefault: false,
 		Extra:            control.ExtraFromString("aichat"),
 		Brief:            "大模型聊天和Agent",
-		Help:             "- (随意聊天, 概率匹配)",
+		Help: "- (随意聊天, 概率匹配)\n" +
+			"- 指令大全\n",
 
 		PrivateDataFolder: "aichat",
 	}).ApplySingle(single.New(
@@ -248,14 +249,14 @@ func init() {
 			for _, url := range imageURLs {
 				contents = append(contents, model.NewContentImageURL(url))
 			}
-			userPrompt := strings.TrimSpace(userText + memorySystemText(ctx.Event.UserID) + directive)
+			userPrompt := strings.TrimSpace(userText + memorySystemText(ctx.Event.UserID) + commandKBSystemText() + directive)
 			if userPrompt != "" {
 				contents = append(contents, model.NewContentText(userPrompt))
 			}
 			data, err = imgAPI.Request(imgMod.User(contents...))
 		} else {
 			// 普通文本聊天
-			sysp := chat.AC.SystemP + memorySystemText(ctx.Event.UserID) + directive
+			sysp := chat.AC.SystemP + memorySystemText(ctx.Event.UserID) + commandKBSystemText() + directive
 			if isGroupDirected {
 				data, err = x.Request(buildDirectedChatRequest(mod, ctx.Event.GroupID, ctx.Event.UserID, senderName, userText, sysp, bool(chat.AC.NoSystemP)))
 			} else {

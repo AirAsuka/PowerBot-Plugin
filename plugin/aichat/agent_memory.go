@@ -3,6 +3,7 @@ package aichat
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,7 +53,11 @@ func aichatAgentOf(id int64) *goba.Agent {
 	if ag, ok := userAgents.Load(id); ok {
 		return ag
 	}
-	ag := goba.NewAgent(chat.AgentCharConfig, 16, 8, time.Hour*24, "", getMemberMemory(), true, true)
+	cc := chat.AgentCharConfig
+	if !strings.Contains(cc.Chars, commandKBPrefix) {
+		cc.Chars += commandKBSystemText()
+	}
+	ag := goba.NewAgent(cc, 16, 8, time.Hour*24, "", getMemberMemory(), true, true)
 	userAgents.Store(id, &ag)
 	return &ag
 }
@@ -63,7 +68,11 @@ func aichatDirectedAgentOf(selfID, groupID, userID int64) *goba.Agent {
 	if ag, ok := directedUserAgents.Load(key); ok {
 		return ag
 	}
-	ag := goba.NewAgent(chat.AgentCharConfig, 16, 8, time.Hour*24, "", fixedUserMemory{userID: userID}, true, true)
+	cc := chat.AgentCharConfig
+	if !strings.Contains(cc.Chars, commandKBPrefix) {
+		cc.Chars += commandKBSystemText()
+	}
+	ag := goba.NewAgent(cc, 16, 8, time.Hour*24, "", fixedUserMemory{userID: userID}, true, true)
 	directedUserAgents.Store(key, &ag)
 	return &ag
 }

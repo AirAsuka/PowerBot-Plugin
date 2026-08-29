@@ -31,10 +31,10 @@ var (
 			"- 查看AI聊天系统提示词\n" +
 			"- 重置AI聊天系统提示词\n" +
 			"- 设置AI聊天系统提示词xxx\n" +
-			"- 设置AI聊天Agent性格xxx" +
-			"- 查看AI聊天Agent性格" +
-			"- 设置AI聊天Agent性别xxx" +
-			"- 查看AI聊天Agent性别" +
+			"- 设置AI聊天Agent性格xxx\n" +
+			"- 查看AI聊天Agent性格\n" +
+			"- 设置AI聊天Agent性别xxx\n" +
+			"- 查看AI聊天Agent性别\n" +
 			"- 重置AI聊天Agent性格性别\n" +
 			"- 设置AI聊天分隔符</think>(留空则清除)\n" +
 			"- 设置AI聊天(不)响应AT\n" +
