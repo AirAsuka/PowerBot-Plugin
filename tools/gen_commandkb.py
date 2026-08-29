@@ -13,6 +13,7 @@
 依赖: 仅 Python 标准库。
 """
 
+import json
 import os
 import re
 import sys
@@ -253,6 +254,115 @@ def find_triggers(name: str) -> list:
 
 
 # ---------------------------------------------------------------------------
+# AmongUs 小知识（与插件 plugin/amongus/dict 的 GetRoleDesc 逻辑保持一致）
+# ---------------------------------------------------------------------------
+
+# 阵营短名，与 dict/role_config.go 的 CampShortText 一致，用于过滤纯阵营词条
+AMONGUS_CAMP_NAMES = {"船员", "伪装者", "中立"}
+
+_AMONGUS_DESC_LABELS = (
+    ("ShortDesc", "简介："),
+    ("FullDesc", "详细介绍："),
+    ("IntroDesc", "开场白："),
+)
+
+
+def _read_dict_file(name: str) -> str:
+    with open(os.path.join(PLUGIN_DIR, "amongus", "dict", name), encoding="utf-8") as f:
+        return f.read()
+
+
+def generate_amongus_kb() -> str:
+    """生成 AmongUs 职业小知识章节，返回 markdown 文本。"""
+    info = json.loads(_read_dict_file("role_info.json"))
+    maps_src = _read_dict_file("maps.go")
+    cats_src = _read_dict_file("role_categories.go")
+
+    # RoleText: 英文名 -> 中文名
+    m = re.search(r"var RoleText = map\[string\]string\{(.*?)\n\}", maps_src, re.S)
+    roletext = dict(
+        re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', m.group(1)) if m else []
+    )
+
+    # 中文名 -> 英文名列表（等价于 RoleTextReverse）
+    reverse = {}
+    for en, cn in roletext.items():
+        if cn in AMONGUS_CAMP_NAMES:
+            continue
+        reverse.setdefault(cn, []).append(en)
+
+    # 阵营分类（等价于 RoleCategories + CategoryKeys）
+    m = re.search(
+        r"var RoleCategories = map\[string\]\[\]string\{(.*?)\n\}",
+        cats_src,
+        re.S,
+    )
+    categories = {}
+    if m:
+        for cm, rm in re.findall(r'"([^"]+)"\s*:\s*\{([^}]*)\}', m.group(1), re.S):
+            categories[cm] = re.findall(r'"([A-Za-z0-9]+)"', rm)
+    m = re.search(r"var CategoryKeys = \[\]string\{([^}]*)\}", cats_src)
+    cat_order = re.findall(r'"([^"]+)"', m.group(1)) if m else list(categories)
+
+    # 中文名 -> 第一个所属阵营（与 GetRoleDesc 一致，仅用于分组展示）
+    cn_category = {}
+    for cat in cat_order:
+        for en in categories.get(cat, []):
+            cn = roletext.get(en, en)
+            if cn in AMONGUS_CAMP_NAMES or cn in cn_category:
+                continue
+            cn_category[cn] = cat
+
+    def desc_of(cn: str) -> str:
+        """等价于 dict.GetRoleDesc：拼接所有英文名对应的 简介/详细介绍/开场白。"""
+        parts = []
+        for en in reverse.get(cn, []):
+            for suffix, label in _AMONGUS_DESC_LABELS:
+                d = info.get(en + suffix, {}).get("13", "")
+                if d:
+                    parts.append(label + d)
+        # 一个中文名对应多个英文名时，可能读到相同描述，去重
+        seen = set()
+        uniq = []
+        for p in parts:
+            if p in seen:
+                continue
+            seen.add(p)
+            uniq.append(p)
+        text = "；".join(uniq)
+        # 去除 AmongUs 富文本颜色标签，如 <color=#FF1919FF>严禁</color>
+        text = re.sub(r"<[^>]*>", "", text)
+        # 描述内可能含字面 \n 或真实换行，统一压平成单行；行内空格保留
+        text = text.replace("\\n", "；")
+        text = re.sub(r"\s*\n\s*", "；", text)
+        while "；；" in text:
+            text = text.replace("；；", "；")
+        return text.strip("；").strip()
+
+    lines = [
+        "## AmongUs 小知识（职业描述）",
+        "> 当用户询问 AmongUs 职业的玩法、技能、规则或“小知识”时，可直接引用下方对应职业的描述回答，"
+        "也可提示用户发送「小知识 职业名」查看。",
+    ]
+    for cat in cat_order + ["其他"]:
+        names = (
+            [cn for cn, c in cn_category.items() if c == cat]
+            if cat != "其他"
+            else [cn for cn in reverse if cn not in cn_category]
+        )
+        entries = []
+        for cn in names:
+            d = desc_of(cn)
+            if d:
+                entries.append("- " + cn + "：" + d)
+        if not entries:
+            continue
+        lines.append("### " + cat)
+        lines.extend(entries)
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # main.go 启用/禁用列表
 # ---------------------------------------------------------------------------
 
@@ -329,6 +439,9 @@ def main() -> int:
         for ln in lines:
             section.append("- " + ln if not ln.startswith("- ") else ln)
         sections.append("\n".join(section))
+        # AmongUs 小知识内容紧随 amongus 插件章节
+        if name == "amongus":
+            sections.append(generate_amongus_kb())
 
     if disabled:
         appendix = ["## 未启用插件（当前不可用，请勿向用户推荐）"]
