@@ -143,6 +143,28 @@ func (c *Clock) CancelTimer(key uint32) bool {
 	return false
 }
 
+// CancelWeeklyTimers cancels all targeted weekly reminders in a group.
+// The mention list identifies reminders created by the weekly command, so
+// ordinary cron reminders and @all reminders remain untouched.
+func (c *Clock) CancelWeeklyTimers(grpID int64) int {
+	c.timersmu.RLock()
+	keys := make([]uint32, 0)
+	for key, t := range *c.timers {
+		if t.GrpID == grpID && t.AtQQ != "" {
+			keys = append(keys, key)
+		}
+	}
+	c.timersmu.RUnlock()
+
+	deleted := 0
+	for _, key := range keys {
+		if c.CancelTimer(key) {
+			deleted++
+		}
+	}
+	return deleted
+}
+
 // ListTimers 列出本群所有计时器
 func (c *Clock) ListTimers(grpID int64) []string {
 	// 数组默认长度为map长度,后面append时,不需要重新申请内存和拷贝,效率很高

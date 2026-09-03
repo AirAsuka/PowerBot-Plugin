@@ -48,6 +48,7 @@ const (
 		"- 在\"cron\"时(用[url])提醒大家[xxx]\n" +
 		"- 设置每周提醒 周一,周三,周五 09:30 QQ号,QQ号 提醒内容\n" +
 		"- 取消每周提醒 周一,周三,周五 09:30\n" +
+		"- 删除本群所有周提醒\n" +
 		"- 取消在\"cron\"的提醒\n" +
 		"- 列出所有提醒\n" +
 		"- 翻牌\n" +
@@ -422,6 +423,11 @@ func init() { // 插件主体
 			} else {
 				ctx.SendChain(message.Text("没有这个定时器哦~"))
 			}
+		})
+	engine.OnFullMatch("删除本群所有周提醒", zero.AdminPermission, zero.OnlyGroup).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			deleted := clock.CancelWeeklyTimers(ctx.Event.GroupID)
+			ctx.SendChain(message.Text("已删除本群 ", deleted, " 个周提醒~"))
 		})
 	// 取消定时
 	engine.OnRegex(`^取消在(.{1,2})月(.{1,3}日|每?周.?)的(.{1,3})点(.{1,3})分的提醒`, zero.AdminPermission, zero.OnlyGroup).SetBlock(true).
