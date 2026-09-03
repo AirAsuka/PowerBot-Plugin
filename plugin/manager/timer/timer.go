@@ -57,7 +57,7 @@ func (c *Clock) RegisterTimer(ts *Timer, save, isinit bool) bool {
 	}
 	t, ok := c.GetTimer(key)
 	if t != ts && ok { // 避免重复注册定时器
-		t.SetEn(false)
+		c.CancelTimer(key)
 	}
 	logrus.Infoln("[群管]注册计时器", key)
 	if ts.Cron != "" {
@@ -190,6 +190,9 @@ func (c *Clock) loadTimers(db *sql.Sqlite) {
 	c.db = db
 	err := c.db.Create("timer", &Timer{})
 	if err == nil {
+		// Create does not alter tables created by older versions. Add the target
+		// column lazily so existing installations keep all their reminders.
+		_, _ = c.db.Exec("ALTER TABLE timer ADD COLUMN atqq TEXT DEFAULT ''")
 		var t Timer
 		_ = c.db.FindFor("timer", &t, "", func() error {
 			tescape := t

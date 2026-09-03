@@ -46,6 +46,8 @@ const (
 		"- 取消在MM月dd日的hh点mm分的提醒\n" +
 		"- 取消在MM月[每周 | 周几]的hh点mm分的提醒\n" +
 		"- 在\"cron\"时(用[url])提醒大家[xxx]\n" +
+		"- 设置每周提醒 周一,周三,周五 09:30 QQ号,QQ号 提醒内容\n" +
+		"- 取消每周提醒 周一,周三,周五 09:30\n" +
 		"- 取消在\"cron\"的提醒\n" +
 		"- 列出所有提醒\n" +
 		"- 翻牌\n" +
@@ -67,6 +69,68 @@ var (
 	db    sql.Sqlite
 	clock timer.Clock
 )
+
+func weeklyReminderArgs(weekdays, hourText, minuteText, qqText string) (string, string, error) {
+	hour, err := strconv.Atoi(hourText)
+	if err != nil || hour < 0 || hour > 23 {
+		return "", "", fmt.Errorf("小时必须是 0～23")
+	}
+	minute, err := strconv.Atoi(minuteText)
+	if err != nil || minute < 0 || minute > 59 {
+		return "", "", fmt.Errorf("分钟必须是 0～59")
+	}
+
+	weekdaySet := make(map[int]struct{}, 7)
+	for _, part := range strings.FieldsFunc(weekdays, func(r rune) bool {
+		return r == ',' || r == '，' || r == '、' || r == ' ' || r == '\t'
+	}) {
+		part = strings.TrimPrefix(strings.TrimPrefix(part, "星期"), "周")
+		dayNames := map[string]int{"日": 0, "天": 0, "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6}
+		day, ok := dayNames[part]
+		if !ok {
+			return "", "", fmt.Errorf("无法识别星期 %q", part)
+		}
+		weekdaySet[day] = struct{}{}
+	}
+	if len(weekdaySet) == 0 {
+		return "", "", fmt.Errorf("至少指定一个星期")
+	}
+	days := make([]int, 0, len(weekdaySet))
+	for day := range weekdaySet {
+		days = append(days, day)
+	}
+	sort.Ints(days)
+	dayText := make([]string, len(days))
+	for i, day := range days {
+		dayText[i] = strconv.Itoa(day)
+	}
+
+	qqSet := make(map[int64]struct{})
+	for _, part := range strings.FieldsFunc(qqText, func(r rune) bool {
+		return r == ',' || r == '，' || r == '、' || r == ' ' || r == '\t'
+	}) {
+		qq, parseErr := strconv.ParseInt(part, 10, 64)
+		if parseErr != nil || qq <= 0 {
+			return "", "", fmt.Errorf("QQ号 %q 非法", part)
+		}
+		qqSet[qq] = struct{}{}
+	}
+	if len(qqSet) == 0 {
+		return "", "", fmt.Errorf("至少指定一个QQ号")
+	}
+	qqs := make([]int64, 0, len(qqSet))
+	for qq := range qqSet {
+		qqs = append(qqs, qq)
+	}
+	sort.Slice(qqs, func(i, j int) bool { return qqs[i] < qqs[j] })
+	qqParts := make([]string, len(qqs))
+	for i, qq := range qqs {
+		qqParts[i] = strconv.FormatInt(qq, 10)
+	}
+
+	cronExpr := fmt.Sprintf("%d %d * * %s", minute, hour, strings.Join(dayText, ","))
+	return cronExpr, strings.Join(qqParts, ","), nil
+}
 
 func init() { // 插件主体
 	engine := control.AutoRegister(&ctrl.Options[*zero.Ctx]{
@@ -326,6 +390,37 @@ func init() { // 插件主体
 				ctx.SendChain(message.Text("记住了~"))
 			} else {
 				ctx.SendChain(message.Text("参数非法:" + ts.Alert))
+			}
+		})
+	// 每周多日定时提醒指定群友
+	engine.OnRegex(`^设置每周提醒\s+(.+?)\s+(\d{1,2}):(\d{1,2})\s+([\d,，、\s]+?)\s+(.+)$`, zero.AdminPermission, zero.OnlyGroup).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			matches := ctx.State["regex_matched"].([]string)
+			cronExpr, atQQ, err := weeklyReminderArgs(matches[1], matches[2], matches[3], matches[4])
+			if err != nil {
+				ctx.SendChain(message.Text("参数非法：", err))
+				return
+			}
+			ts := timer.GetFilledCronAtTimer(cronExpr, matches[5], atQQ, ctx.Event.SelfID, ctx.Event.GroupID)
+			if clock.RegisterTimer(ts, true, false) {
+				ctx.SendChain(message.Text("记住了~"))
+			} else {
+				ctx.SendChain(message.Text("参数非法:", ts.Alert))
+			}
+		})
+	engine.OnRegex(`^取消每周提醒\s+(.+?)\s+(\d{1,2}):(\d{1,2})$`, zero.AdminPermission, zero.OnlyGroup).SetBlock(true).
+		Handle(func(ctx *zero.Ctx) {
+			matches := ctx.State["regex_matched"].([]string)
+			cronExpr, _, err := weeklyReminderArgs(matches[1], matches[2], matches[3], "1")
+			if err != nil {
+				ctx.SendChain(message.Text("参数非法：", err))
+				return
+			}
+			ts := timer.Timer{Cron: cronExpr, GrpID: ctx.Event.GroupID}
+			if clock.CancelTimer(ts.GetTimerID()) {
+				ctx.SendChain(message.Text("取消成功~"))
+			} else {
+				ctx.SendChain(message.Text("没有这个定时器哦~"))
 			}
 		})
 	// 取消定时
