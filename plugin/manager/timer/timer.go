@@ -38,7 +38,11 @@ var (
 
 // NewClock 添加一个新时钟
 func NewClock(db *sql.Sqlite) (c Clock) {
-	c.cron = cron.New()
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		loc = time.FixedZone("Asia/Shanghai", 8*60*60)
+	}
+	c.cron = cron.New(cron.WithLocation(loc))
 	c.entries = make(map[uint32]cron.EntryID)
 	c.timers = &map[uint32]*Timer{}
 	c.loadTimers(db)

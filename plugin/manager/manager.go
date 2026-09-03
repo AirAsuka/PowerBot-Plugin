@@ -128,7 +128,7 @@ func weeklyReminderArgs(weekdays, hourText, minuteText, qqText string) (string, 
 		qqParts[i] = strconv.FormatInt(qq, 10)
 	}
 
-	cronExpr := fmt.Sprintf("%d %d * * %s", minute, hour, strings.Join(dayText, ","))
+	cronExpr := fmt.Sprintf("CRON_TZ=Asia/Shanghai %d %d * * %s", minute, hour, strings.Join(dayText, ","))
 	return cronExpr, strings.Join(qqParts, ","), nil
 }
 

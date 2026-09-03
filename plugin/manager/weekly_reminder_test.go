@@ -7,7 +7,7 @@ func TestWeeklyReminderArgs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cronExpr != "30 9 * * 1,3,5" {
+	if cronExpr != "CRON_TZ=Asia/Shanghai 30 9 * * 1,3,5" {
 		t.Fatalf("cron = %q", cronExpr)
 	}
 	if qqs != "123456789,987654321" {
