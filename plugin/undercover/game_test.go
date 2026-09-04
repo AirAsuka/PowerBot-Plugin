@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"testing"
 )
 
@@ -89,6 +90,39 @@ func TestSecretsForSpecialAndUnknownRoles(t *testing.T) {
 				t.Errorf("angel got %d words", len(item.Words))
 			}
 		}
+	}
+}
+
+func TestCancelDealRestoresLobbyAndPlayers(t *testing.T) {
+	g := newGame(1, "玩家1")
+	for i := 2; i <= 5; i++ {
+		if err := g.join(int64(i), fmt.Sprintf("玩家%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantJoinOrder := append([]int64(nil), g.JoinOrder...)
+	if _, err := g.begin(1, wordPair{Civilian: "牛奶", Undercover: "豆浆"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.cancelDeal(); err != nil {
+		t.Fatal(err)
+	}
+	if g.Phase != phaseLobby {
+		t.Fatalf("phase = %v, want %v", g.Phase, phaseLobby)
+	}
+	if len(g.Players) != len(wantJoinOrder) || !slices.Equal(g.JoinOrder, wantJoinOrder) {
+		t.Fatalf("players were not retained: players=%d joinOrder=%v", len(g.Players), g.JoinOrder)
+	}
+	if len(g.Order) != 0 || g.Round != 0 || g.CivilianWord != "" || g.UndercoverWord != "" || len(g.WolfIDs) != 0 || g.BlankID != 0 || g.AngelID != 0 {
+		t.Fatalf("deal state was not cleared: %+v", g)
+	}
+	for _, p := range g.Players {
+		if len(p.Words) != 0 || p.Role != roleCivilian || !p.Alive {
+			t.Fatalf("player state was not reset: %+v", p)
+		}
+	}
+	if _, err := g.begin(1, wordPair{Civilian: "可乐", Undercover: "雪碧"}); err != nil {
+		t.Fatalf("room could not be started again: %v", err)
 	}
 }
 

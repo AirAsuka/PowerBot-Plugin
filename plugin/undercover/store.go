@@ -61,8 +61,7 @@ func (s *roomStore) finishDeal(groupID int64, expected *game, success bool) erro
 		return errRoomNotFound
 	}
 	if !success {
-		delete(s.rooms, groupID)
-		return nil
+		return g.cancelDeal()
 	}
 	return g.completeDeal()
 }

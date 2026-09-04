@@ -58,7 +58,7 @@ func init() {
 			}
 			ctx.SendChain(
 				message.At(ctx.Event.UserID),
-				message.Text(" 已创建谁是卧底房间并自动加入！\n其他玩家请发送“加入卧底”，凑齐至少3人后由房主发送“开始卧底”。"),
+				message.Text(" 已创建谁是卧底房间并自动加入！\n其他玩家请发送“加入卧底”，并请所有玩家先添加机器人好友、私聊任意消息；凑齐至少3人后由房主发送“开始卧底”。"),
 			)
 		})
 
@@ -208,7 +208,7 @@ func startGame(ctx *zero.Ctx) {
 		}
 		ctx.SendChain(
 			message.Text("开局失败：无法私聊 "), message.At(failed),
-			message.Text("。房间已取消，请该玩家先私聊机器人任意消息后重新创建。"),
+			message.Text("。请该玩家先添加机器人好友并私聊任意消息，再由房主重新发送“开始卧底”。房间和玩家名单已保留。"),
 		)
 		return
 	}

@@ -321,6 +321,34 @@ func (g *game) completeDeal() error {
 	return nil
 }
 
+// cancelDeal 将发词失败的游戏恢复为原来的大厅，保留房主和玩家名单以便重试。
+func (g *game) cancelDeal() error {
+	if g.Phase != phaseDealing {
+		return errors.New("发词阶段已经结束")
+	}
+	g.Order = nil
+	g.Phase = phaseLobby
+	g.Round = 0
+	g.Turn = 0
+	g.RoundClues = nil
+	g.Votes = nil
+	g.VoteTargets = nil
+	g.NightActions = nil
+	g.BlankActed = false
+	g.CivilianWord = ""
+	g.UndercoverWord = ""
+	g.WolfIDs = nil
+	g.BlankID = 0
+	g.AngelID = 0
+	for _, p := range g.Players {
+		p.Words = nil
+		p.Role = roleCivilian
+		p.Alive = true
+	}
+	g.touch()
+	return nil
+}
+
 func (g *game) describe(id int64, clue string) (next int64, voting bool, err error) {
 	if g.Phase != phaseDescribing {
 		return 0, false, errNotDescribing
