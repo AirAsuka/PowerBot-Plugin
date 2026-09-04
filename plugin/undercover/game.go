@@ -115,6 +115,13 @@ type elimination struct {
 	Role playerRole
 }
 
+// clueRecord 保存一名玩家在某轮提交的有效描述，用于下一轮开始时生成群聊记录。
+type clueRecord struct {
+	PlayerID   int64
+	PlayerName string
+	Text       string
+}
+
 type gameReveal struct {
 	CivilianWord   string
 	UndercoverWord string
@@ -128,6 +135,8 @@ type voteResult struct {
 	Changed     bool
 	VotesCast   int
 	VotesNeeded int
+	Voted       []int64
+	Pending     []int64
 	Tie         []int64
 	Eliminated  elimination
 	Winner      string
@@ -143,6 +152,8 @@ type nightResult struct {
 	Killed        []elimination
 	Winner        string
 	NextDescriber int64
+	ClueRound     int
+	Clues         []clueRecord
 	Reveal        gameReveal
 }
 
@@ -154,6 +165,7 @@ type game struct {
 	Phase          phase
 	Round          int
 	Turn           int
+	RoundClues     []clueRecord
 	Votes          map[int64]int64
 	VoteTargets    map[int64]struct{}
 	NightActions   map[int64]int64 // 0 表示主动选择“不刀”
@@ -239,6 +251,7 @@ func (g *game) begin(requester int64, pair wordPair) ([]secret, error) {
 	g.assignRoles()
 	g.Round = 1
 	g.Turn = 0
+	g.RoundClues = nil
 	g.Phase = phaseDealing
 	g.Votes = make(map[int64]int64)
 	g.VoteTargets = nil
@@ -335,9 +348,17 @@ func (g *game) describe(id int64, clue string) (next int64, voting bool, err err
 		}
 	}
 
-	g.Turn++
+	g.RoundClues = append(g.RoundClues, clueRecord{
+		PlayerID:   id,
+		PlayerName: p.Name,
+		Text:       clue,
+	})
+	// Turn is the current position in Order, not the number of players that have
+	// described this round. Later rounds may start from the middle of Order, so
+	// advance it circularly and use RoundClues to decide when everyone has spoken.
+	g.Turn = (g.Turn + 1) % len(g.Order)
 	g.touch()
-	if g.Turn == len(g.Order) {
+	if len(g.RoundClues) == len(g.Order) {
 		g.Phase = phaseVoting
 		g.Turn = 0
 		g.Votes = make(map[int64]int64)
@@ -373,6 +394,7 @@ func (g *game) vote(voter, target int64) (voteResult, error) {
 	_, result.Changed = g.Votes[voter]
 	g.Votes[voter] = target
 	result.VotesCast = len(g.Votes)
+	result.Voted, result.Pending = g.voteProgress()
 	g.touch()
 	if len(g.Votes) < len(g.Order) {
 		return result, nil
@@ -399,6 +421,7 @@ func (g *game) vote(voter, target int64) (voteResult, error) {
 		}
 		result.Complete = true
 		result.VotesCast = 0
+		result.Voted, result.Pending = g.voteProgress()
 		return result, nil
 	}
 
@@ -547,6 +570,9 @@ func (g *game) resolveNight(force bool) (nightResult, error) {
 	}
 
 	g.Round++
+	result.ClueRound = g.Round - 1
+	result.Clues = append([]clueRecord(nil), g.RoundClues...)
+	g.RoundClues = nil
 	g.Phase = phaseDescribing
 	g.NightActions = nil
 	g.BlankActed = false
@@ -650,6 +676,19 @@ func (g *game) alivePlayers() []*player {
 		players = append(players, g.Players[id])
 	}
 	return players
+}
+
+func (g *game) voteProgress() (voted, pending []int64) {
+	voted = make([]int64, 0, len(g.Votes))
+	pending = make([]int64, 0, len(g.Order)-len(g.Votes))
+	for _, id := range g.Order {
+		if _, ok := g.Votes[id]; ok {
+			voted = append(voted, id)
+		} else {
+			pending = append(pending, id)
+		}
+	}
+	return voted, pending
 }
 
 func (g *game) expired(now time.Time) bool {

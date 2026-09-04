@@ -183,6 +183,113 @@ func TestTieRequiresRestrictedRevote(t *testing.T) {
 	}
 }
 
+func TestVoteResultTracksVotedAndPendingPlayers(t *testing.T) {
+	g := makeStartedGame(t, 4)
+	finishDescriptions(t, g)
+	voter := g.Order[0]
+	target := g.Order[1]
+	result, err := g.vote(voter, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Voted) != 1 || result.Voted[0] != voter {
+		t.Fatalf("voted = %v, want [%d]", result.Voted, voter)
+	}
+	if len(result.Pending) != len(g.Order)-1 {
+		t.Fatalf("pending = %v, want %d players", result.Pending, len(g.Order)-1)
+	}
+	for _, id := range result.Pending {
+		if id == voter {
+			t.Fatalf("voter %d was also listed as pending", voter)
+		}
+	}
+}
+
+func TestNextRoundArchivesAndClearsPreviousClues(t *testing.T) {
+	g := makeStartedGame(t, 5)
+	finishDescriptions(t, g)
+	want := append([]clueRecord(nil), g.RoundClues...)
+	if len(want) != len(g.Order) {
+		t.Fatalf("recorded %d clues, want %d", len(want), len(g.Order))
+	}
+
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	result, err := g.resolveNight(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Winner != "" {
+		t.Skip("random role assignment reached a terminal state")
+	}
+	if result.ClueRound != 1 || len(result.Clues) != len(want) {
+		t.Fatalf("archive round=%d clues=%v, want round=1 clues=%v", result.ClueRound, result.Clues, want)
+	}
+	for i := range want {
+		if result.Clues[i] != want[i] {
+			t.Fatalf("archive clue %d = %+v, want %+v", i, result.Clues[i], want[i])
+		}
+	}
+	if len(g.RoundClues) != 0 {
+		t.Fatalf("current round still contains previous clues: %v", g.RoundClues)
+	}
+}
+
+func TestNextRoundStartingMidOrderWaitsForEveryDescription(t *testing.T) {
+	g := makeStartedGame(t, 6)
+	finishDescriptions(t, g)
+
+	oldOrder := append([]int64(nil), g.Order...)
+	wolf := g.WolfIDs[0]
+	var target int64
+	for i := 2; i < len(oldOrder)-1; i++ {
+		if oldOrder[i] != wolf {
+			target = oldOrder[i]
+			break
+		}
+	}
+	if target == 0 {
+		t.Fatal("could not find a non-wolf night target in the middle of the order")
+	}
+
+	g.Phase = phaseNight
+	g.NightActions = map[int64]int64{wolf: target}
+	result, err := g.resolveNight(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Winner != "" {
+		t.Fatalf("night unexpectedly ended the game: %+v", result)
+	}
+
+	start := -1
+	for i, id := range g.Order {
+		if id == result.NextDescriber {
+			start = i
+			break
+		}
+	}
+	if start <= 0 {
+		t.Fatalf("next describer index = %d, want a position after the start of order", start)
+	}
+	expected := append(append([]int64(nil), g.Order[start:]...), g.Order[:start]...)
+	for i, id := range expected {
+		next, voting, describeErr := g.describe(id, fmt.Sprintf("第二轮安全描述%d", i+1))
+		if describeErr != nil {
+			t.Fatalf("player %d describes: %v", id, describeErr)
+		}
+		if voting != (i == len(expected)-1) {
+			t.Fatalf("voting=%v after %d/%d descriptions", voting, i+1, len(expected))
+		}
+		if !voting && next != expected[i+1] {
+			t.Fatalf("next=%d, want %d", next, expected[i+1])
+		}
+	}
+	if len(g.RoundClues) != len(g.Order) {
+		t.Fatalf("recorded %d second-round clues, want %d", len(g.RoundClues), len(g.Order))
+	}
+}
+
 func TestNightActorsExcludeBlankAndAngel(t *testing.T) {
 	g := makeStartedGame(t, 8)
 	g.Phase = phaseNight

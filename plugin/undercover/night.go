@@ -23,7 +23,11 @@ type namedElimination struct {
 type nightOutcome struct {
 	Result       nightResult
 	Killed       []namedElimination
+	DeadPlayers  []namedElimination
+	AlivePlayers []string
 	NextName     string
+	ClueRound    int
+	Clues        []clueRecord
 	FinalSummary string
 	Room         *game
 }
@@ -304,9 +308,22 @@ func captureNightOutcome(g *game, outcome *nightOutcome) {
 			Role: killed.Role,
 		})
 	}
+	for _, id := range g.JoinOrder {
+		p := g.Players[id]
+		if p.Alive {
+			outcome.AlivePlayers = append(outcome.AlivePlayers, p.Name)
+			continue
+		}
+		outcome.DeadPlayers = append(outcome.DeadPlayers, namedElimination{
+			Name: p.Name,
+			Role: p.Role,
+		})
+	}
 	if outcome.Result.NextDescriber != 0 {
 		outcome.NextName = g.Players[outcome.Result.NextDescriber].Name
 	}
+	outcome.ClueRound = outcome.Result.ClueRound
+	outcome.Clues = append([]clueRecord(nil), outcome.Result.Clues...)
 	if outcome.Result.Winner != "" {
 		outcome.FinalSummary = revealSummary(g, outcome.Result.Reveal)
 	}
@@ -339,12 +356,67 @@ func announceNight(ctx *zero.Ctx, groupID int64, outcome nightOutcome) {
 		ctx.SendGroupMessage(groupID, message.Text(b.String()))
 		return
 	}
+	sendClueArchive(ctx, groupID, outcome.ClueRound, outcome.Clues)
+	b.WriteString("\n")
+	b.WriteString(formatRoundPlayers(outcome.DeadPlayers, outcome.AlivePlayers))
 	b.WriteString("\n进入下一轮，请 ")
 	ctx.SendGroupMessage(groupID, message.Message{
 		message.Text(b.String()),
 		message.At(outcome.Result.NextDescriber),
 		message.Text("（", outcome.NextName, "）先描述。"),
 	})
+}
+
+func formatRoundPlayers(dead []namedElimination, alive []string) string {
+	var b strings.Builder
+	b.WriteString("死亡玩家：")
+	if len(dead) == 0 {
+		b.WriteString("暂无")
+	} else {
+		for i, p := range dead {
+			if i > 0 {
+				b.WriteString("、")
+			}
+			fmt.Fprintf(&b, "%s（%s）", p.Name, p.Role)
+		}
+	}
+	b.WriteString("\n存活玩家：")
+	if len(alive) == 0 {
+		b.WriteString("暂无")
+	} else {
+		b.WriteString(strings.Join(alive, "、"))
+	}
+	return b.String()
+}
+
+// sendClueArchive 在第 2 轮及以后开始前，把上一轮描述复刻为合并转发记录。
+// 优先使用原玩家昵称和 QQ 作为节点发送者；平台不允许伪造其他发送者时，
+// 再由机器人作为统一发送者复刻一遍，确保记录仍能发出。
+func sendClueArchive(ctx *zero.Ctx, groupID int64, round int, clues []clueRecord) {
+	if round <= 0 || len(clues) == 0 {
+		return
+	}
+	nodes := make(message.Message, 0, len(clues)+1)
+	nodes = append(nodes, message.CustomNode("谁是卧底", ctx.Event.SelfID, fmt.Sprintf("第%d轮发言记录", round)))
+	for _, clue := range clues {
+		nodes = append(nodes, message.CustomNode(clue.PlayerName, clue.PlayerID, clue.Text))
+	}
+	if ctx.SendGroupForwardMessage(groupID, nodes).Get("message_id").Int() != 0 {
+		return
+	}
+
+	fallback := make(message.Message, 0, len(clues)+1)
+	fallback = append(fallback, message.CustomNode("谁是卧底", ctx.Event.SelfID, fmt.Sprintf("第%d轮发言记录", round)))
+	for _, clue := range clues {
+		fallback = append(fallback, message.CustomNode(
+			"谁是卧底",
+			ctx.Event.SelfID,
+			fmt.Sprintf("%s（%d）：%s", clue.PlayerName, clue.PlayerID, clue.Text),
+		))
+	}
+	if ctx.SendGroupForwardMessage(groupID, fallback).Get("message_id").Int() == 0 {
+		ctx.SendGroupMessage(groupID, message.Text("第", round, "轮发言记录发送失败，请稍后通过“卧底状态”确认游戏进度。"))
+	}
 }
 
 func secretText(item secret) string {

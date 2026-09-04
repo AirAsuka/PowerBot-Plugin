@@ -240,13 +240,18 @@ func startGame(ctx *zero.Ctx) {
 func handleClue(ctx *zero.Ctx) {
 	clue := ctx.State["regex_matched"].([]string)[1]
 	var (
-		nextID   int64
-		nextName string
-		voting   bool
+		nextID       int64
+		nextName     string
+		voting       bool
+		voteProgress string
 	)
 	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
 		var err error
 		nextID, voting, err = g.describe(ctx.Event.UserID, clue)
+		if err == nil && voting {
+			voted, pending := g.voteProgress()
+			voteProgress = formatVoteProgress(g, voted, pending)
+		}
 		if nextID != 0 && g.Players[nextID] != nil {
 			nextName = g.Players[nextID].Name
 		}
@@ -261,7 +266,7 @@ func handleClue(ctx *zero.Ctx) {
 		return
 	}
 	if voting {
-		ctx.SendChain(message.Text("本轮描述完毕，进入投票阶段。所有存活玩家请发送“卧底投票 @玩家”；可以改票，以最后一票为准。"))
+		ctx.SendChain(message.Text("本轮描述完毕，进入投票阶段。所有存活玩家请发送“卧底投票 @玩家”；可以改票，以最后一票为准。\n", voteProgress))
 		return
 	}
 	ctx.SendChain(message.Text("描述已记录，下一位请 "), message.At(nextID), message.Text("（", nextName, "）描述。"))
@@ -280,6 +285,7 @@ func handleVote(ctx *zero.Ctx) {
 		eliminatedName string
 		tieNames       []string
 		finalSummary   string
+		voteProgress   string
 		room           *game
 	)
 	err = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
@@ -298,6 +304,7 @@ func handleVote(ctx *zero.Ctx) {
 		if result.Winner != "" {
 			finalSummary = revealSummary(g, result.Reveal)
 		}
+		voteProgress = formatVoteProgress(g, result.Voted, result.Pending)
 		return nil
 	})
 	if err != nil {
@@ -310,11 +317,11 @@ func handleVote(ctx *zero.Ctx) {
 		if result.Changed {
 			action = "改票成功"
 		}
-		ctx.SendChain(message.Text(action, "（", result.VotesCast, "/", result.VotesNeeded, "）"))
+		ctx.SendChain(message.Text(action, "（", result.VotesCast, "/", result.VotesNeeded, "）\n", voteProgress))
 		return
 	}
 	if len(result.Tie) > 0 {
-		ctx.SendChain(message.Text("本轮平票：", strings.Join(tieNames, "、"), "。请所有存活玩家重新投票，本轮只能投给以上候选人。"))
+		ctx.SendChain(message.Text("本轮平票：", strings.Join(tieNames, "、"), "。请所有存活玩家重新投票，本轮只能投给以上候选人。\n", voteProgress))
 		return
 	}
 	if result.Winner != "" {
@@ -352,6 +359,8 @@ func handleStatus(ctx *zero.Ctx) {
 		}
 		if g.Phase == phaseVoting {
 			fmt.Fprintf(&b, "\n投票进度：%d/%d", len(g.Votes), len(g.Order))
+			voted, pending := g.voteProgress()
+			fmt.Fprintf(&b, "\n%s", formatVoteProgress(g, voted, pending))
 			if len(g.VoteTargets) > 0 {
 				candidates := make([]string, 0, len(g.VoteTargets))
 				for _, id := range g.Order {
@@ -392,6 +401,26 @@ func numberedNames(names []string) string {
 		}
 	}
 	return b.String()
+}
+
+func formatVoteProgress(g *game, voted, pending []int64) string {
+	return "已投票：" + joinedPlayerNames(g, voted) + "\n未投票：" + joinedPlayerNames(g, pending)
+}
+
+func joinedPlayerNames(g *game, ids []int64) string {
+	if len(ids) == 0 {
+		return "暂无"
+	}
+	names := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if p := g.Players[id]; p != nil {
+			names = append(names, p.Name)
+		}
+	}
+	if len(names) == 0 {
+		return "暂无"
+	}
+	return strings.Join(names, "、")
 }
 
 func sendError(ctx *zero.Ctx, err error) {
