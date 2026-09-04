@@ -29,6 +29,7 @@ var (
 	errNotVoting        = errors.New("现在不是投票阶段")
 	errNotNight         = errors.New("现在不是夜晚行动阶段")
 	errNoNightAction    = errors.New("你本夜没有行动资格")
+	errNightActionUsed  = errors.New("你本夜已经行动过了")
 	errPlayerOut        = errors.New("你已经出局，不能继续操作")
 	errSelfVote         = errors.New("不能投票给自己")
 	errSelfAttack       = errors.New("不能刀自己")
@@ -156,6 +157,7 @@ type game struct {
 	Votes          map[int64]int64
 	VoteTargets    map[int64]struct{}
 	NightActions   map[int64]int64 // 0 表示主动选择“不刀”
+	BlankActed     bool            // 白板本夜已经猜词或主动放弃
 	CivilianWord   string
 	UndercoverWord string
 	WolfIDs        []int64
@@ -241,6 +243,7 @@ func (g *game) begin(requester int64, pair wordPair) ([]secret, error) {
 	g.Votes = make(map[int64]int64)
 	g.VoteTargets = nil
 	g.NightActions = nil
+	g.BlankActed = false
 	g.touch()
 
 	secrets := make([]secret, 0, len(g.Order))
@@ -412,12 +415,13 @@ func (g *game) vote(voter, target int64) (voteResult, error) {
 
 	g.Phase = phaseNight
 	g.NightActions = make(map[int64]int64)
+	g.BlankActed = false
 	result.NightActors = g.nightActors()
 	return result, nil
 }
 
 func (g *game) nightAction(actor, target int64) (nightResult, error) {
-	result := nightResult{ActionsNeeded: len(g.nightActors())}
+	result := nightResult{ActionsNeeded: g.nightActionsNeeded()}
 	if g.Phase != phaseNight {
 		return result, errNotNight
 	}
@@ -442,7 +446,7 @@ func (g *game) nightAction(actor, target int64) (nightResult, error) {
 	}
 	_, result.Changed = g.NightActions[actor]
 	g.NightActions[actor] = target
-	result.ActionsCast = len(g.NightActions)
+	result.ActionsCast = g.nightActionsCast()
 	g.touch()
 	if result.ActionsCast < result.ActionsNeeded {
 		return result, nil
@@ -450,11 +454,56 @@ func (g *game) nightAction(actor, target int64) (nightResult, error) {
 	return g.resolveNight(false)
 }
 
-// resolveNight 同时结算所有夜间行动。force 为 true 时，未提交者按“不刀”处理。
+// blankGuess 提交白板本夜唯一一次猜词机会。两个词的顺序不限；giveUp 表示主动放弃。
+func (g *game) blankGuess(actor int64, first, second string, giveUp bool) (nightResult, error) {
+	result := nightResult{
+		ActionsCast:   g.nightActionsCast(),
+		ActionsNeeded: g.nightActionsNeeded(),
+	}
+	if g.Phase != phaseNight {
+		return result, errNotNight
+	}
+	p, ok := g.Players[actor]
+	if !ok {
+		return result, errNotJoined
+	}
+	if !p.Alive {
+		return result, errPlayerOut
+	}
+	if p.Role != roleBlank {
+		return result, errNoNightAction
+	}
+	if g.BlankActed {
+		return result, errNightActionUsed
+	}
+
+	g.BlankActed = true
+	result.ActionsCast = g.nightActionsCast()
+	g.touch()
+	if !giveUp && g.blankGuessCorrect(first, second) {
+		result.Complete = true
+		result.Winner = "白板"
+		g.finish(&result.Reveal)
+		return result, nil
+	}
+	if result.ActionsCast < result.ActionsNeeded {
+		return result, nil
+	}
+	return g.resolveNight(false)
+}
+
+func (g *game) blankGuessCorrect(first, second string) bool {
+	first = strings.TrimSpace(first)
+	second = strings.TrimSpace(second)
+	return strings.EqualFold(first, g.CivilianWord) && strings.EqualFold(second, g.UndercoverWord) ||
+		strings.EqualFold(first, g.UndercoverWord) && strings.EqualFold(second, g.CivilianWord)
+}
+
+// resolveNight 同时结算所有夜间行动。force 为 true 时，普通玩家未提交按“不刀”、白板未提交按放弃处理。
 func (g *game) resolveNight(force bool) (nightResult, error) {
 	result := nightResult{
-		ActionsCast:   len(g.NightActions),
-		ActionsNeeded: len(g.nightActors()),
+		ActionsCast:   g.nightActionsCast(),
+		ActionsNeeded: g.nightActionsNeeded(),
 	}
 	if g.Phase != phaseNight {
 		return result, errNotNight
@@ -500,6 +549,7 @@ func (g *game) resolveNight(force bool) (nightResult, error) {
 	g.Round++
 	g.Phase = phaseDescribing
 	g.NightActions = nil
+	g.BlankActed = false
 	g.Votes = make(map[int64]int64)
 	g.VoteTargets = nil
 	g.Turn = 0
@@ -531,6 +581,26 @@ func (g *game) nightActors() []int64 {
 		}
 	}
 	return actors
+}
+
+func (g *game) blankCanGuess() bool {
+	return g.BlankID != 0 && g.Players[g.BlankID] != nil && g.Players[g.BlankID].Alive
+}
+
+func (g *game) nightActionsNeeded() int {
+	needed := len(g.nightActors())
+	if g.blankCanGuess() {
+		needed++
+	}
+	return needed
+}
+
+func (g *game) nightActionsCast() int {
+	cast := len(g.NightActions)
+	if g.BlankActed && g.blankCanGuess() {
+		cast++
+	}
+	return cast
 }
 
 func (g *game) winner() string {

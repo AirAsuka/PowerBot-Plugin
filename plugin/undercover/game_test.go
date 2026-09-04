@@ -208,6 +208,9 @@ func TestCivilianAttackCausesSuicide(t *testing.T) {
 	g := makeStartedGame(t, 5)
 	g.Phase = phaseNight
 	g.NightActions = make(map[int64]int64)
+	if _, err := g.blankGuess(g.BlankID, "", "", true); err != nil {
+		t.Fatal(err)
+	}
 	actors := g.nightActors()
 	var attackingCivilian, target int64
 	for _, id := range actors {
@@ -241,6 +244,9 @@ func TestEachWolfAttackSucceedsSimultaneously(t *testing.T) {
 	g := makeStartedGame(t, 8)
 	g.Phase = phaseNight
 	g.NightActions = make(map[int64]int64)
+	if _, err := g.blankGuess(g.BlankID, "", "", true); err != nil {
+		t.Fatal(err)
+	}
 	actors := g.nightActors()
 	targets := make([]int64, 0, 2)
 	for _, id := range g.Order {
@@ -268,6 +274,35 @@ func TestEachWolfAttackSucceedsSimultaneously(t *testing.T) {
 	}
 	if !killed[targets[0]] || !killed[targets[1]] {
 		t.Fatalf("night killed %+v, want both wolf targets %v", last.Killed, targets)
+	}
+}
+
+func TestBlankWinsByGuessingBothWordsInEitherOrder(t *testing.T) {
+	g := makeStartedGame(t, 5)
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	result, err := g.blankGuess(g.BlankID, g.UndercoverWord, g.CivilianWord, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Complete || result.Winner != "白板" || g.Phase != phaseFinished {
+		t.Fatalf("unexpected result: %+v phase=%v", result, g.Phase)
+	}
+}
+
+func TestBlankGetsOnlyOneGuessPerNight(t *testing.T) {
+	g := makeStartedGame(t, 5)
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	result, err := g.blankGuess(g.BlankID, "错误词一", "错误词二", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Complete || result.Winner != "" || !g.BlankActed {
+		t.Fatalf("unexpected wrong-guess result: %+v", result)
+	}
+	if _, err := g.blankGuess(g.BlankID, g.CivilianWord, g.UndercoverWord, false); !errors.Is(err, errNightActionUsed) {
+		t.Fatalf("second guess returned %v", err)
 	}
 }
 
@@ -357,16 +392,33 @@ func TestNightActionPattern(t *testing.T) {
 		"卧底刀人 不刀",
 		"卧底刀人 123456",
 		"卧底刀人 987654321 123456",
-		"卧底刀人 987654321 不刀",
 	}
 	for _, input := range tests {
 		if !re.MatchString(input) {
 			t.Errorf("night action pattern rejected %q", input)
 		}
 	}
-	for _, input := range []string{"卧底刀人", "卧底刀人 张三", "卧底刀人 1 2 3"} {
+	for _, input := range []string{"卧底刀人", "卧底刀人 张三", "卧底刀人 1 2 3", "卧底刀人 987654321 不刀"} {
 		if re.MatchString(input) {
 			t.Errorf("night action pattern accepted %q", input)
+		}
+	}
+}
+
+func TestBlankGuessPattern(t *testing.T) {
+	re := regexp.MustCompile(blankGuessPattern)
+	for _, input := range []string{
+		"卧底猜词 牛奶|豆浆",
+		"卧底猜词 牛奶｜豆浆",
+		"卧底猜词 987654321 牛奶|豆浆",
+	} {
+		if !re.MatchString(input) {
+			t.Errorf("blank guess pattern rejected %q", input)
+		}
+	}
+	for _, input := range []string{"卧底猜词", "卧底猜词 放弃", "卧底猜词 牛奶"} {
+		if re.MatchString(input) {
+			t.Errorf("blank guess pattern accepted %q", input)
 		}
 	}
 }

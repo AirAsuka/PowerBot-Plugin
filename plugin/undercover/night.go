@@ -31,18 +31,26 @@ type nightOutcome struct {
 func registerNightCommands() {
 	engine.OnRegex(nightActionPattern, zero.OnlyPrivate).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		matches := ctx.State["regex_matched"].([]string)
-		groupID, err := nightGroupID(ctx.Event.UserID, matches[1])
+		if matches[1] == "" {
+			submitNoAttack(ctx)
+			return
+		}
+
+		groupInput := ""
+		targetInput := matches[1]
+		if matches[2] != "" {
+			groupInput = matches[1]
+			targetInput = matches[2]
+		}
+		groupID, err := nightGroupID(ctx.Event.UserID, groupInput)
 		if err != nil {
 			sendError(ctx, err)
 			return
 		}
-		targetID := int64(0)
-		if matches[2] != "不刀" {
-			targetID, err = strconv.ParseInt(matches[2], 10, 64)
-			if err != nil || targetID <= 0 {
-				sendError(ctx, errors.New("目标QQ号格式错误"))
-				return
-			}
+		targetID, err := strconv.ParseInt(targetInput, 10, 64)
+		if err != nil || targetID <= 0 {
+			sendError(ctx, errors.New("目标QQ号格式错误"))
+			return
 		}
 
 		outcome, err := submitNightAction(groupID, ctx.Event.UserID, targetID)
@@ -61,6 +69,79 @@ func registerNightCommands() {
 		ctx.SendChain(message.Text("夜间选择已记录，所有玩家均已行动，正在结算。"))
 		announceNight(ctx, groupID, outcome)
 	})
+
+	engine.OnRegex(blankGuessPattern, zero.OnlyPrivate).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		matches := ctx.State["regex_matched"].([]string)
+		groupID, err := blankGroupID(ctx.Event.UserID, matches[1])
+		if err != nil {
+			sendError(ctx, err)
+			return
+		}
+		outcome, err := submitBlankGuess(groupID, ctx.Event.UserID, matches[2], matches[3], false)
+		if err != nil {
+			sendError(ctx, err)
+			return
+		}
+		if outcome.Result.Winner == "白板" {
+			ctx.SendChain(message.Text("两词全部猜中，白板获胜！"))
+			announceNight(ctx, groupID, outcome)
+			return
+		}
+		ctx.SendChain(message.Text("猜词错误，本夜机会已用完（", outcome.Result.ActionsCast, "/", outcome.Result.ActionsNeeded, "）。"))
+		if outcome.Result.Complete {
+			announceNight(ctx, groupID, outcome)
+		}
+	})
+
+	engine.OnFullMatch("卧底猜词 放弃", zero.OnlyPrivate).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		groups := rooms.pendingBlankGuessGroups(ctx.Event.UserID)
+		if len(groups) == 0 {
+			sendError(ctx, errors.New("没有找到你当前可猜词的夜晚房间"))
+			return
+		}
+		completed := make(map[int64]nightOutcome)
+		for _, groupID := range groups {
+			outcome, err := submitBlankGuess(groupID, ctx.Event.UserID, "", "", true)
+			if err != nil {
+				continue
+			}
+			if outcome.Result.Complete {
+				completed[groupID] = outcome
+			}
+		}
+		ctx.SendChain(message.Text("已放弃本夜猜词机会。"))
+		for groupID, outcome := range completed {
+			announceNight(ctx, groupID, outcome)
+		}
+	})
+}
+
+func submitNoAttack(ctx *zero.Ctx) {
+	groups := rooms.pendingNightGroups(ctx.Event.UserID)
+	if len(groups) == 0 {
+		sendError(ctx, errors.New("没有找到你当前可行动的夜晚房间"))
+		return
+	}
+	completed := make(map[int64]nightOutcome)
+	recorded := 0
+	for _, groupID := range groups {
+		outcome, err := submitNightAction(groupID, ctx.Event.UserID, 0)
+		if err != nil {
+			continue
+		}
+		recorded++
+		if outcome.Result.Complete {
+			completed[groupID] = outcome
+		}
+	}
+	if recorded == 0 {
+		sendError(ctx, errors.New("夜间状态已经变化，请重新查看游戏状态"))
+		return
+	}
+	ctx.SendChain(message.Text("已记录不刀，无需填写QQ号。"))
+	for groupID, outcome := range completed {
+		announceNight(ctx, groupID, outcome)
+	}
 }
 
 func nightGroupID(userID int64, input string) (int64, error) {
@@ -78,12 +159,33 @@ func nightGroupID(userID int64, input string) (int64, error) {
 	case 1:
 		return groups[0], nil
 	default:
-		return 0, errors.New("你在多个群有夜间行动，请使用“卧底刀人 群号 不刀/目标QQ号”")
+		return 0, errors.New("你在多个群有夜间行动，刀人时请使用“卧底刀人 群号 目标QQ号”")
+	}
+}
+
+func blankGroupID(userID int64, input string) (int64, error) {
+	if input != "" {
+		groupID, err := strconv.ParseInt(input, 10, 64)
+		if err != nil || groupID <= 0 {
+			return 0, errors.New("群号格式错误")
+		}
+		return groupID, nil
+	}
+	groups := rooms.pendingBlankGuessGroups(userID)
+	switch len(groups) {
+	case 0:
+		return 0, errors.New("没有找到你当前可猜词的夜晚房间")
+	case 1:
+		return groups[0], nil
+	default:
+		return 0, errors.New("你在多个群有白板猜词机会，请使用“卧底猜词 群号 词语1|词语2”")
 	}
 }
 
 func startNight(ctx *zero.Ctx, groupID int64, expected *game, actors []int64) {
 	prompts := make(map[int64]string, len(actors))
+	blankID := int64(0)
+	blankPrompt := ""
 	round := 0
 	err := rooms.withRoom(groupID, func(g *game) error {
 		if g != expected || g.Phase != phaseNight {
@@ -98,8 +200,14 @@ func startNight(ctx *zero.Ctx, groupID int64, expected *game, actors []int64) {
 				}
 			}
 			prompts[actor] = fmt.Sprintf(
-				"【谁是卧底】第%d轮夜晚\n你不知道自己是平民还是狼人。请选择是否开刀：\n不刀：卧底刀人 %d 不刀\n刀人：卧底刀人 %d 目标QQ号\n可选目标：%s\n注意：狼人开刀会杀死目标；平民开刀会导致自己出局。",
-				g.Round, groupID, groupID, targets.String())
+				"【谁是卧底】第%d轮夜晚\n你不知道自己是平民还是狼人。请选择是否开刀：\n不刀：卧底刀人 不刀\n刀人：卧底刀人 目标QQ号\n可选目标：%s\n注意：狼人开刀会杀死目标；平民开刀会导致自己出局。",
+				g.Round, targets.String())
+		}
+		if g.blankCanGuess() {
+			blankID = g.BlankID
+			blankPrompt = fmt.Sprintf(
+				"【谁是卧底】第%d轮夜晚\n你是白板，本夜有一次猜词机会。\n猜词：卧底猜词 词语1|词语2（两个词顺序不限）\n放弃：卧底猜词 放弃\n同时猜中平民词和狼人词，你将立即获胜；猜错后本夜不能重猜。",
+				g.Round)
 		}
 		return nil
 	})
@@ -113,8 +221,16 @@ func startNight(ctx *zero.Ctx, groupID int64, expected *game, actors []int64) {
 			failed = append(failed, actor)
 		}
 	}
+	blankFailed := blankID != 0 && ctx.SendPrivateMessage(blankID, message.Text(blankPrompt)) == 0
 	for _, actor := range failed {
 		outcome, actionErr := submitNightAction(groupID, actor, 0)
+		if actionErr == nil && outcome.Result.Complete {
+			announceNight(ctx, groupID, outcome)
+			return
+		}
+	}
+	if blankFailed {
+		outcome, actionErr := submitBlankGuess(groupID, blankID, "", "", true)
 		if actionErr == nil && outcome.Result.Complete {
 			announceNight(ctx, groupID, outcome)
 			return
@@ -134,6 +250,23 @@ func submitNightAction(groupID, actorID, targetID int64) (nightOutcome, error) {
 	err := rooms.withRoom(groupID, func(g *game) error {
 		outcome.Room = g
 		result, err := g.nightAction(actorID, targetID)
+		if err != nil {
+			return err
+		}
+		outcome.Result = result
+		if result.Complete {
+			captureNightOutcome(g, &outcome)
+		}
+		return nil
+	})
+	return outcome, err
+}
+
+func submitBlankGuess(groupID, actorID int64, first, second string, giveUp bool) (nightOutcome, error) {
+	var outcome nightOutcome
+	err := rooms.withRoom(groupID, func(g *game) error {
+		outcome.Room = g
+		result, err := g.blankGuess(actorID, first, second, giveUp)
 		if err != nil {
 			return err
 		}
@@ -180,6 +313,13 @@ func captureNightOutcome(g *game, outcome *nightOutcome) {
 }
 
 func announceNight(ctx *zero.Ctx, groupID int64, outcome nightOutcome) {
+	if outcome.Result.Winner == "白板" {
+		rooms.removeIfSame(groupID, outcome.Room)
+		ctx.SendGroupMessage(groupID, message.Text(
+			"白板成功猜出了平民词和狼人词，白板获胜！\n", outcome.FinalSummary,
+		))
+		return
+	}
 	var b strings.Builder
 	if len(outcome.Killed) == 0 {
 		b.WriteString("天亮了，昨夜平安无事。")
@@ -210,7 +350,7 @@ func announceNight(ctx *zero.Ctx, groupID int64, outcome nightOutcome) {
 func secretText(item secret) string {
 	switch item.Role {
 	case roleBlank:
-		return "【谁是卧底】游戏已开始\n你的身份是：白板\n你没有词语，请根据其他人的描述隐藏身份。\n回到群内，轮到你时发送：卧底描述 你的描述"
+		return "【谁是卧底】游戏已开始\n你的身份是：白板\n你没有词语，请根据其他人的描述隐藏身份。每轮夜晚你有一次机会猜出平民词和狼人词，两词全部正确即可单独获胜。\n回到群内，轮到你时发送：卧底描述 你的描述"
 	case roleAngel:
 		return fmt.Sprintf("【谁是卧底】游戏已开始\n你的身份是：天使\n你看到的两个词是：%s / %s\n你不知道哪个属于平民、哪个属于狼人；你没有夜间刀人行动。\n回到群内，轮到你时发送：卧底描述 你的描述", item.Words[0], item.Words[1])
 	default:

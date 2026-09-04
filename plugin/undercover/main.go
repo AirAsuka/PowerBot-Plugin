@@ -22,7 +22,7 @@ const helpText = `谁是卧底（3—12人）
 
 其他指令：卧底玩家、卧底状态、退出卧底、结束卧底
 身份配置：5人起加入白板；8人起配置2狼并加入天使。
-夜晚规则：投票后，所有普通拿词玩家私聊选择刀或不刀；狼刀人成功，平民开刀会自杀；天使和白板没有夜间行动。
+夜晚规则：投票后，普通拿词玩家私聊选择刀或不刀；狼刀人成功，平民开刀会自杀。白板每夜可猜两个词，全部猜中则白板单独获胜；天使没有夜间行动。
 胜负规则：所有狼出局则平民阵营胜；存活狼数达到其他存活人数时狼人阵营胜。
 提示：开局前请先私聊机器人任意消息，确保机器人能发词。
 
@@ -363,7 +363,7 @@ func handleStatus(ctx *zero.Ctx) {
 			}
 		}
 		if g.Phase == phaseNight {
-			fmt.Fprintf(&b, "\n夜间行动进度：%d/%d", len(g.NightActions), len(g.nightActors()))
+			fmt.Fprintf(&b, "\n夜间行动进度：%d/%d", g.nightActionsCast(), g.nightActionsNeeded())
 		}
 		text = b.String()
 		return nil
