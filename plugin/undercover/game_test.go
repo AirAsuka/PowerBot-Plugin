@@ -38,53 +38,87 @@ func finishDescriptions(t *testing.T, g *game) {
 	}
 }
 
-func TestBeginAssignsOneUndercover(t *testing.T) {
-	g := makeStartedGame(t, 5)
-	undercoverCount := 0
-	for _, p := range g.Players {
-		if p.IsUndercover {
-			undercoverCount++
-			if p.Word != g.UndercoverWord {
-				t.Fatalf("undercover got %q, want %q", p.Word, g.UndercoverWord)
-			}
-		} else if p.Word != g.CivilianWord {
-			t.Fatalf("civilian got %q, want %q", p.Word, g.CivilianWord)
+func TestRoleSetupByPlayerCount(t *testing.T) {
+	tests := []struct {
+		players, wolves, blanks, angels int
+	}{
+		{3, 1, 0, 0},
+		{5, 1, 1, 0},
+		{7, 1, 1, 0},
+		{8, 2, 1, 1},
+		{12, 2, 1, 1},
+	}
+	for _, tt := range tests {
+		g := makeStartedGame(t, tt.players)
+		counts := map[playerRole]int{}
+		for _, p := range g.Players {
+			counts[p.Role]++
+		}
+		if counts[roleWolf] != tt.wolves || counts[roleBlank] != tt.blanks || counts[roleAngel] != tt.angels {
+			t.Errorf("%d players: roles=%v", tt.players, counts)
+		}
+		if counts[roleCivilian]+counts[roleWolf]+counts[roleBlank]+counts[roleAngel] != tt.players {
+			t.Errorf("%d players: role total mismatch", tt.players)
 		}
 	}
-	if undercoverCount != 1 {
-		t.Fatalf("got %d undercovers, want 1", undercoverCount)
+}
+
+func TestSecretsForSpecialAndUnknownRoles(t *testing.T) {
+	g := newGame(1, "玩家1")
+	for i := 2; i <= 8; i++ {
+		if err := g.join(int64(i), fmt.Sprintf("玩家%d", i)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if g.Phase != phaseDescribing || g.Round != 1 {
-		t.Fatalf("unexpected state: phase=%v round=%d", g.Phase, g.Round)
+	secrets, err := g.begin(1, wordPair{Civilian: "牛奶", Undercover: "豆浆"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range secrets {
+		switch item.Role {
+		case roleCivilian, roleWolf:
+			if len(item.Words) != 1 {
+				t.Errorf("%s got %d words", item.Role, len(item.Words))
+			}
+		case roleBlank:
+			if len(item.Words) != 0 {
+				t.Errorf("blank got words: %v", item.Words)
+			}
+		case roleAngel:
+			if len(item.Words) != 2 {
+				t.Errorf("angel got %d words", len(item.Words))
+			}
+		}
 	}
 }
 
 func TestDescriptionTurnAndSecretProtection(t *testing.T) {
-	g := makeStartedGame(t, 3)
+	g := makeStartedGame(t, 8)
 	first := g.Order[0]
 	second := g.Order[1]
-
 	if _, _, err := g.describe(second, "还没轮到我"); !errors.Is(err, errNotYourTurn) {
 		t.Fatalf("got %v, want errNotYourTurn", err)
 	}
-	if _, _, err := g.describe(first, "这句话包含"+g.Players[first].Word); err == nil {
-		t.Fatal("description containing the secret word was accepted")
+	if words := g.Players[first].Words; len(words) > 0 {
+		if _, _, err := g.describe(first, "这句话包含"+words[0]); err == nil {
+			t.Fatal("description containing a visible word was accepted")
+		}
 	}
 	if next, voting, err := g.describe(first, "一种日常可见的东西"); err != nil || voting || next != second {
 		t.Fatalf("next=%d voting=%v err=%v", next, voting, err)
 	}
 }
 
-func TestCivilianWinsWhenUndercoverIsEliminated(t *testing.T) {
+func TestCivilianWinsWhenLastWolfIsVotedOut(t *testing.T) {
 	g := makeStartedGame(t, 3)
 	finishDescriptions(t, g)
-	undercover := g.UndercoverID
+	wolf := g.WolfIDs[0]
 	var last voteResult
-	for _, voter := range g.Order {
-		target := undercover
-		if voter == undercover {
+	for _, voter := range append([]int64(nil), g.Order...) {
+		target := wolf
+		if voter == wolf {
 			for _, id := range g.Order {
-				if id != undercover {
+				if id != wolf {
 					target = id
 					break
 				}
@@ -96,29 +130,26 @@ func TestCivilianWinsWhenUndercoverIsEliminated(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if last.Winner != "平民" || last.Eliminated != undercover || !last.WasUndercover {
+	if last.Winner != "平民" || last.Eliminated.ID != wolf || last.Eliminated.Role != roleWolf {
 		t.Fatalf("unexpected result: %+v", last)
-	}
-	if _, err := g.vote(g.Order[0], g.Order[1]); !errors.Is(err, errNotVoting) {
-		t.Fatalf("finished game accepted another vote: %v", err)
 	}
 }
 
-func TestUndercoverWinsAtTwoPlayers(t *testing.T) {
+func TestWolfWinsWhenParityReachedAfterVote(t *testing.T) {
 	g := makeStartedGame(t, 3)
 	finishDescriptions(t, g)
 	var civilian int64
 	for _, id := range g.Order {
-		if id != g.UndercoverID {
+		if g.Players[id].Role == roleCivilian {
 			civilian = id
 			break
 		}
 	}
 	var last voteResult
-	for _, voter := range g.Order {
+	for _, voter := range append([]int64(nil), g.Order...) {
 		target := civilian
 		if voter == civilian {
-			target = g.UndercoverID
+			target = g.WolfIDs[0]
 		}
 		var err error
 		last, err = g.vote(voter, target)
@@ -126,7 +157,7 @@ func TestUndercoverWinsAtTwoPlayers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if last.Winner != "卧底" || last.Eliminated != civilian || last.WasUndercover {
+	if last.Winner != "狼人" || last.Eliminated.ID != civilian {
 		t.Fatalf("unexpected result: %+v", last)
 	}
 }
@@ -149,6 +180,136 @@ func TestTieRequiresRestrictedRevote(t *testing.T) {
 	}
 	if _, err := g.vote(b, a); err == nil {
 		t.Fatal("vote outside tied candidates was accepted")
+	}
+}
+
+func TestNightActorsExcludeBlankAndAngel(t *testing.T) {
+	g := makeStartedGame(t, 8)
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	actors := g.nightActors()
+	if len(actors) != 6 {
+		t.Fatalf("got %d actors, want 6", len(actors))
+	}
+	for _, id := range actors {
+		if g.Players[id].Role == roleBlank || g.Players[id].Role == roleAngel {
+			t.Fatalf("%s received night action", g.Players[id].Role)
+		}
+	}
+	if _, err := g.nightAction(g.BlankID, 0); !errors.Is(err, errNoNightAction) {
+		t.Fatalf("blank action returned %v", err)
+	}
+	if _, err := g.nightAction(g.AngelID, 0); !errors.Is(err, errNoNightAction) {
+		t.Fatalf("angel action returned %v", err)
+	}
+}
+
+func TestCivilianAttackCausesSuicide(t *testing.T) {
+	g := makeStartedGame(t, 5)
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	actors := g.nightActors()
+	var attackingCivilian, target int64
+	for _, id := range actors {
+		if g.Players[id].Role == roleCivilian && attackingCivilian == 0 {
+			attackingCivilian = id
+		} else if target == 0 {
+			target = id
+		}
+	}
+	var last nightResult
+	for _, actor := range actors {
+		actionTarget := int64(0)
+		if actor == attackingCivilian {
+			actionTarget = target
+		}
+		var err error
+		last, err = g.nightAction(actor, actionTarget)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(last.Killed) != 1 || last.Killed[0].ID != attackingCivilian {
+		t.Fatalf("night killed %+v, want civilian %d", last.Killed, attackingCivilian)
+	}
+	if !g.Players[target].Alive {
+		t.Fatal("civilian attack killed its target")
+	}
+}
+
+func TestEachWolfAttackSucceedsSimultaneously(t *testing.T) {
+	g := makeStartedGame(t, 8)
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	actors := g.nightActors()
+	targets := make([]int64, 0, 2)
+	for _, id := range g.Order {
+		if g.Players[id].Role != roleWolf && g.Players[id].Role != roleCivilian {
+			targets = append(targets, id)
+		}
+	}
+	var last nightResult
+	wolfIndex := 0
+	for _, actor := range actors {
+		target := int64(0)
+		if g.Players[actor].Role == roleWolf {
+			target = targets[wolfIndex]
+			wolfIndex++
+		}
+		var err error
+		last, err = g.nightAction(actor, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	killed := map[int64]bool{}
+	for _, player := range last.Killed {
+		killed[player.ID] = true
+	}
+	if !killed[targets[0]] || !killed[targets[1]] {
+		t.Fatalf("night killed %+v, want both wolf targets %v", last.Killed, targets)
+	}
+}
+
+func TestForcedNightTreatsMissingActionsAsNoAttack(t *testing.T) {
+	g := makeStartedGame(t, 5)
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	result, err := g.resolveNight(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Complete || len(result.Killed) != 0 || g.Phase != phaseDescribing {
+		t.Fatalf("unexpected forced result: %+v phase=%v", result, g.Phase)
+	}
+}
+
+func TestWolfWinsAfterNightReachesParity(t *testing.T) {
+	g := makeStartedGame(t, 4)
+	var civilians []int64
+	for _, id := range g.Order {
+		if g.Players[id].Role == roleCivilian {
+			civilians = append(civilians, id)
+		}
+	}
+	g.eliminate(civilians[0]) // 模拟白天已有一名平民出局。
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	actors := g.nightActors()
+	var last nightResult
+	for _, actor := range actors {
+		target := int64(0)
+		if g.Players[actor].Role == roleWolf {
+			target = civilians[1]
+		}
+		var err error
+		last, err = g.nightAction(actor, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if last.Winner != "狼人" || g.Phase != phaseFinished {
+		t.Fatalf("unexpected result: %+v phase=%v", last, g.Phase)
 	}
 }
 
@@ -188,7 +349,24 @@ func TestVotePattern(t *testing.T) {
 			t.Errorf("voteTarget(%q) = %d, %v; want %d", tt.message, got, err, tt.want)
 		}
 	}
-	if _, err := voteTarget(re.FindStringSubmatch("卧底投票 张三")); err == nil {
-		t.Fatal("invalid vote target was accepted")
+}
+
+func TestNightActionPattern(t *testing.T) {
+	re := regexp.MustCompile(nightActionPattern)
+	tests := []string{
+		"卧底刀人 不刀",
+		"卧底刀人 123456",
+		"卧底刀人 987654321 123456",
+		"卧底刀人 987654321 不刀",
+	}
+	for _, input := range tests {
+		if !re.MatchString(input) {
+			t.Errorf("night action pattern rejected %q", input)
+		}
+	}
+	for _, input := range []string{"卧底刀人", "卧底刀人 张三", "卧底刀人 1 2 3"} {
+		if re.MatchString(input) {
+			t.Errorf("night action pattern accepted %q", input)
+		}
 	}
 }

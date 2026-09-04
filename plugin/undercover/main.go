@@ -21,7 +21,9 @@ const helpText = `谁是卧底（3—12人）
 5. 描述结束后发送“卧底投票 @玩家”
 
 其他指令：卧底玩家、卧底状态、退出卧底、结束卧底
-规则：描述不能直接说出自己的词；平票时只在平票玩家中重投；卧底出局则平民胜，卧底存活到只剩2人则卧底胜。
+身份配置：5人起加入白板；8人起配置2狼并加入天使。
+夜晚规则：投票后，所有普通拿词玩家私聊选择刀或不刀；狼刀人成功，平民开刀会自杀；天使和白板没有夜间行动。
+胜负规则：所有狼出局则平民阵营胜；存活狼数达到其他存活人数时狼人阵营胜。
 提示：开局前请先私聊机器人任意消息，确保机器人能发词。
 
 管理员词库指令：
@@ -162,13 +164,14 @@ func init() {
 				return
 			}
 			text := "谁是卧底房间已结束。"
-			if g.Phase != phaseLobby && g.UndercoverID != 0 {
-				text += fmt.Sprintf("\n本局平民词：%s\n卧底词：%s\n卧底：%s", g.CivilianWord, g.UndercoverWord, g.Players[g.UndercoverID].Name)
+			if g.Phase != phaseLobby && len(g.WolfIDs) > 0 {
+				text += "\n" + revealSummary(g, g.reveal())
 			}
 			ctx.SendChain(message.Text(text))
 		})
 
 	registerWordCommands()
+	registerNightCommands()
 }
 
 func startGame(ctx *zero.Ctx) {
@@ -190,10 +193,7 @@ func startGame(ctx *zero.Ctx) {
 	sent := make([]int64, 0, len(secrets))
 	var failed int64
 	for _, item := range secrets {
-		id := ctx.SendPrivateMessage(item.UserID, message.Text(
-			"【谁是卧底】游戏已开始\n你的词语是：", item.Word,
-			"\n请保密，不要截图或直接说出词语。\n回到群内，轮到你时发送：卧底描述 你的描述",
-		))
+		id := ctx.SendPrivateMessage(item.UserID, message.Text(secretText(item)))
 		if id == 0 {
 			failed = item.UserID
 			break
@@ -232,7 +232,7 @@ func startGame(ctx *zero.Ctx) {
 		return nil
 	})
 	ctx.SendChain(
-		message.Text("发词完成！第1轮描述顺序：\n", numberedNames(orderNames), "\n请 "),
+		message.Text("发词完成！", roleSetupText(len(secrets)), "\n第1轮描述顺序：\n", numberedNames(orderNames), "\n请 "),
 		message.At(firstID), message.Text(" 先发送“卧底描述 你的描述”。"),
 	)
 }
@@ -278,9 +278,8 @@ func handleVote(ctx *zero.Ctx) {
 	var (
 		result         voteResult
 		eliminatedName string
-		undercoverName string
 		tieNames       []string
-		nextName       string
+		finalSummary   string
 		room           *game
 	)
 	err = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
@@ -290,17 +289,14 @@ func handleVote(ctx *zero.Ctx) {
 		if voteErr != nil {
 			return voteErr
 		}
-		if result.Eliminated != 0 {
-			eliminatedName = g.Players[result.Eliminated].Name
-		}
-		if result.UndercoverID != 0 {
-			undercoverName = g.Players[result.UndercoverID].Name
+		if result.Eliminated.ID != 0 {
+			eliminatedName = g.Players[result.Eliminated.ID].Name
 		}
 		for _, id := range result.Tie {
 			tieNames = append(tieNames, g.Players[id].Name)
 		}
-		if result.NextDescriber != 0 {
-			nextName = g.Players[result.NextDescriber].Name
+		if result.Winner != "" {
+			finalSummary = revealSummary(g, result.Reveal)
 		}
 		return nil
 	})
@@ -323,21 +319,14 @@ func handleVote(ctx *zero.Ctx) {
 	}
 	if result.Winner != "" {
 		rooms.removeIfSame(ctx.Event.GroupID, room)
-		role := "平民"
-		if result.WasUndercover {
-			role = "卧底"
-		}
 		ctx.SendChain(message.Text(
-			eliminatedName, " 被投出，他/她是", role, "。\n",
-			result.Winner, "阵营获胜！\n平民词：", result.CivilianWord,
-			"\n卧底词：", result.UndercoverWord, "\n卧底：", undercoverName,
+			eliminatedName, " 被投出，身份是", result.Eliminated.Role, "。\n",
+			result.Winner, "阵营获胜！\n", finalSummary,
 		))
 		return
 	}
-	ctx.SendChain(
-		message.Text(eliminatedName, " 被投出，他/她是平民。\n进入下一轮，请 "),
-		message.At(result.NextDescriber), message.Text("（", nextName, "）先描述。"),
-	)
+	ctx.SendChain(message.Text(eliminatedName, " 被投出，身份是", result.Eliminated.Role, "。\n天黑请闭眼，机器人正在私聊本夜可行动的玩家。"))
+	startNight(ctx, ctx.Event.GroupID, room, result.NightActors)
 }
 
 func handleStatus(ctx *zero.Ctx) {
@@ -372,6 +361,9 @@ func handleStatus(ctx *zero.Ctx) {
 				}
 				fmt.Fprintf(&b, "\n平票候选：%s", strings.Join(candidates, "、"))
 			}
+		}
+		if g.Phase == phaseNight {
+			fmt.Fprintf(&b, "\n夜间行动进度：%d/%d", len(g.NightActions), len(g.nightActors()))
 		}
 		text = b.String()
 		return nil

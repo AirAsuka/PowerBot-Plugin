@@ -89,6 +89,23 @@ func (s *roomStore) removeIfSame(groupID int64, expected *game) {
 	}
 }
 
+func (s *roomStore) pendingNightGroups(userID int64) []int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	groups := make([]int64, 0, 1)
+	for groupID := range s.rooms {
+		g := s.room(groupID)
+		if g == nil || g.Phase != phaseNight {
+			continue
+		}
+		p := g.Players[userID]
+		if p != nil && p.Alive && (p.Role == roleCivilian || p.Role == roleWolf) {
+			groups = append(groups, groupID)
+		}
+	}
+	return groups
+}
+
 // room 必须在持有 s.mu 时调用。
 func (s *roomStore) room(groupID int64) *game {
 	g := s.rooms[groupID]
