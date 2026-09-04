@@ -782,6 +782,27 @@ print("run[CQ:image,file="+j["img"]+"]")
   - [x] 团队猜成语
 
 </details>
+
+<details>
+  <summary>谁是卧底</summary>
+
+  `import _ "github.com/FloatTech/ZeroBot-Plugin/plugin/undercover"`
+
+  - [x] 创建卧底 / 加入卧底 / 退出卧底
+
+  - [x] 开始卧底（私聊发词）
+
+  - [x] 卧底描述 [描述]
+
+  - [x] 卧底投票 @玩家
+
+  - [x] 卧底玩家 / 卧底状态 / 结束卧底
+
+  - [x] 谁是卧底 / 卧底帮助
+
+  - [x] SQLite 词库：添加、启用、禁用、分页查询与分类统计
+
+</details>
 <details>
   <summary>一言</summary>
 
