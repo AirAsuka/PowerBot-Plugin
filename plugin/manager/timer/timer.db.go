@@ -13,6 +13,7 @@ type Timer struct {
 	Alert                       string `db:"alert"`
 	Cron                        string `db:"cron"`
 	URL                         string `db:"url"`
+	AtQQ                        string `db:"atqq"`
 }
 
 // InsertInto 插入自身
