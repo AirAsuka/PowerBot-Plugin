@@ -155,6 +155,7 @@ import (
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/translation" // 翻译
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/undercover"  // 谁是卧底
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wallet"      // 钱包
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/werewolf"    // 狼人杀
 
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/warframeapi"       // warframeAPI插件
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wife"      // 抽老婆
