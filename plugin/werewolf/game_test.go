@@ -22,17 +22,17 @@ func gameWithRoles(t *testing.T, roles ...role) *game {
 }
 
 func TestRoleCounts(t *testing.T) {
-	wantWolves := map[int]int{6: 2, 7: 2, 8: 2, 9: 3, 10: 3, 11: 3, 12: 4}
+	wantWolves := map[int]int{6: 2, 7: 2, 8: 3, 9: 3, 10: 3, 11: 3, 12: 4}
 	for n := minPlayers; n <= maxPlayers; n++ {
 		counts := roleCounts(n)
 		total := 0
 		for _, count := range counts {
 			total += count
 		}
-		if total != n || counts[roleWolf] != wantWolves[n] || counts[roleSeer] != 1 || counts[roleWitch] != 1 {
+		if total != n || counts[roleWolf] != wantWolves[n] || counts[roleSeer] != 1 {
 			t.Fatalf("%d players: %v", n, counts)
 		}
-		if (n >= 8) != (counts[roleHunter] == 1) {
+		if counts[roleHunter] != 1 || (n >= 7) != (counts[roleWitch] == 1) {
 			t.Fatalf("%d players: hunter count %d", n, counts[roleHunter])
 		}
 	}
@@ -79,11 +79,15 @@ func TestWolfConsensusThenSpecialActionsResolveNight(t *testing.T) {
 		t.Fatalf("inspection=%+v err=%v", inspection, err)
 	}
 	outcome, err := g.witchAct(4, "跳过", 0)
-	if err != nil || !outcome.Complete || len(outcome.Deaths) != 1 || outcome.Deaths[0].ID != 5 {
+	if err != nil || !outcome.Complete || !outcome.AwaitingLastWords || len(outcome.Deaths) != 1 || outcome.Deaths[0].ID != 5 {
 		t.Fatalf("outcome=%+v err=%v", outcome, err)
 	}
-	if g.Phase != phaseDay || g.Players[5].Alive {
+	if g.Phase != phaseNightLastWords || g.Players[5].Alive {
 		t.Fatalf("phase=%v victim alive=%v", g.Phase, g.Players[5].Alive)
+	}
+	outcome, err = g.submitLastWords(5, "预言家请带队")
+	if err != nil || g.Phase != phaseDay || outcome.LastWords[5] != "预言家请带队" {
+		t.Fatalf("last words outcome=%+v phase=%v err=%v", outcome, g.Phase, err)
 	}
 }
 
@@ -165,7 +169,126 @@ func TestPoisonedHunterCannotShoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outcome.NeedHunter || g.Phase == phaseHunter {
+	if !outcome.AwaitingLastWords {
+		t.Fatalf("night did not wait for last words: %+v", outcome)
+	}
+	_, _ = g.submitLastWords(5, "放弃")
+	outcome, err = g.submitLastWords(6, "放弃")
+	if err != nil || outcome.NeedHunter || g.Phase == phaseHunter {
 		t.Fatalf("poisoned hunter was allowed to shoot: %+v", outcome)
+	}
+}
+
+func TestWolvesActSequentially(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	if _, err := g.wolfVote(2, 5); err == nil {
+		t.Fatal("second wolf acted before the first wolf")
+	}
+	first, err := g.wolfVote(1, 5)
+	if err != nil || first.NextWolf != 2 || first.Ready {
+		t.Fatalf("first=%+v err=%v", first, err)
+	}
+	if _, err := g.wolfVote(1, 6); err == nil {
+		t.Fatal("first wolf voted twice")
+	}
+	second, err := g.wolfVote(2, 5)
+	if err != nil || !second.Ready || second.Victim != 5 {
+		t.Fatalf("second=%+v err=%v", second, err)
+	}
+}
+
+func TestWolfCanSelfKillOrChooseNoKill(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	if _, err := g.wolfVote(1, 1); err != nil {
+		t.Fatalf("self kill rejected: %v", err)
+	}
+	result, err := g.wolfVote(2, 0)
+	if err != nil || result.Victim != 1 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestSlaughteredVillagersOrGodsLose(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	g.Players[5].Alive, g.Players[6].Alive = false, false
+	if got := g.winner(); got != "狼人" {
+		t.Fatalf("villager slaughter winner=%q", got)
+	}
+	g = gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	g.Players[3].Alive, g.Players[4].Alive = false, false
+	if got := g.winner(); got != "狼人" {
+		t.Fatalf("god slaughter winner=%q", got)
+	}
+}
+
+func TestWitchCanOnlySelfSaveOnFirstNight(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager, roleVillager)
+	_, _ = g.wolfVote(1, 4)
+	_, _ = g.wolfVote(2, 4)
+	_, _ = g.inspect(3, 1)
+	if _, err := g.witchAct(4, "救", 0); err != nil {
+		t.Fatalf("first-night self save rejected: %v", err)
+	}
+	g = gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager, roleVillager)
+	g.Round = 2
+	_, _ = g.wolfVote(1, 4)
+	_, _ = g.wolfVote(2, 4)
+	_, _ = g.inspect(3, 1)
+	if _, err := g.witchAct(4, "救", 0); err == nil {
+		t.Fatal("self save after first night was accepted")
+	}
+}
+
+func TestWolfExplosionEndsDayAndStartsNextNight(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	g.startDay(nil)
+	g.Speeches = append(g.Speeches, speech{PlayerID: g.currentSpeaker(), Text: "尚未完成的发言"})
+	result, err := g.explode(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Winner != "" || g.Players[1].Alive || g.Phase != phaseNightWolf || g.Round != 2 {
+		t.Fatalf("result=%+v phase=%v round=%d alive=%v", result, g.Phase, g.Round, g.Players[1].Alive)
+	}
+	if len(g.Speeches) != 0 || len(g.DayOrder) != 0 {
+		t.Fatalf("day state was retained: speeches=%v order=%v", g.Speeches, g.DayOrder)
+	}
+}
+
+func TestWolfExplosionDiscardsVoting(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	g.startDay(nil)
+	g.beginVoting()
+	if _, err := g.vote(3, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.explode(2); err != nil {
+		t.Fatal(err)
+	}
+	if g.Phase != phaseNightWolf || len(g.Votes) != 0 || len(g.VoteTargets) != 0 {
+		t.Fatalf("phase=%v votes=%v targets=%v", g.Phase, g.Votes, g.VoteTargets)
+	}
+}
+
+func TestLastWolfExplosionEndsGame(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleSeer, roleWitch, roleVillager)
+	g.startDay(nil)
+	result, err := g.explode(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Winner != "好人" || g.Phase != phaseFinished || len(result.Reveal.Roles) != len(g.Players) {
+		t.Fatalf("result=%+v phase=%v", result, g.Phase)
+	}
+}
+
+func TestNonWolfCannotExplode(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	g.startDay(nil)
+	if _, err := g.explode(3); err == nil {
+		t.Fatal("seer was allowed to explode")
+	}
+	if !g.Players[3].Alive || g.Phase != phaseDay {
+		t.Fatal("failed explosion changed game state")
 	}
 }

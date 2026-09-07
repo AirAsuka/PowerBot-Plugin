@@ -107,3 +107,25 @@ func (s *roomStore) pending(userID int64, want phase, roles ...role) []int64 {
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }
+
+func (s *roomStore) pendingLastWords(userID int64) []int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []int64
+	for gid := range s.rooms {
+		g := s.room(gid)
+		if g == nil || g.Phase != phaseNightLastWords {
+			continue
+		}
+		for _, d := range g.NightDeaths {
+			if d.ID == userID {
+				if _, submitted := g.LastWords[userID]; !submitted {
+					out = append(out, gid)
+				}
+				break
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}

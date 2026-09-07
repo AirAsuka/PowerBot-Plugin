@@ -37,6 +37,7 @@ const (
 	phaseDealing
 	phaseNightWolf
 	phaseNightSpecial
+	phaseNightLastWords
 	phaseDay
 	phaseVoting
 	phaseHunter
@@ -53,6 +54,8 @@ func (p phase) String() string {
 		return "夜晚·狼人行动"
 	case phaseNightSpecial:
 		return "夜晚·神职行动"
+	case phaseNightLastWords:
+		return "夜晚·等待遗言"
 	case phaseDay:
 		return "白天发言"
 	case phaseVoting:
@@ -116,19 +119,21 @@ type speech struct {
 }
 
 type nightResult struct {
-	Complete     bool
-	Deaths       []death
-	Winner       string
-	NeedHunter   bool
-	FirstSpeaker int64
-	Reveal       reveal
+	Complete          bool
+	AwaitingLastWords bool
+	Deaths            []death
+	LastWords         map[int64]string
+	Winner            string
+	NeedHunter        bool
+	FirstSpeaker      int64
+	Reveal            reveal
 }
 
 type wolfVoteResult struct {
 	Ready        bool
-	Changed      bool
 	Cast, Needed int
 	Victim       int64
+	NextWolf     int64
 	Outcome      nightResult
 }
 
@@ -147,6 +152,11 @@ type voteResult struct {
 	Reveal              reveal
 }
 
+type explosionResult struct {
+	Winner string
+	Reveal reveal
+}
+
 type hunterResult struct {
 	Shot         int64
 	Winner       string
@@ -163,6 +173,8 @@ type game struct {
 	Round     int
 
 	WolfVotes                map[int64]int64
+	WolfOrder                []int64
+	WolfTurn                 int
 	WolfVictim               int64
 	SeerActed, WitchActed    bool
 	WitchHeal, WitchPoison   int64
@@ -177,6 +189,8 @@ type game struct {
 	PendingHunter   int64
 	HunterFromNight bool
 	HunterDeaths    []death
+	NightDeaths     []death
+	LastWords       map[int64]string
 	UpdatedAt       time.Time
 }
 
@@ -220,15 +234,15 @@ func (g *game) leave(id int64) (int64, error) {
 
 func roleCounts(n int) map[role]int {
 	wolves := 2
-	if n >= 9 {
+	if n >= 8 {
 		wolves = 3
 	}
 	if n == 12 {
 		wolves = 4
 	}
-	counts := map[role]int{roleWolf: wolves, roleSeer: 1, roleWitch: 1}
-	if n >= 8 {
-		counts[roleHunter] = 1
+	counts := map[role]int{roleWolf: wolves, roleSeer: 1, roleHunter: 1}
+	if n >= 7 {
+		counts[roleWitch] = 1
 	}
 	counts[roleVillager] = n - wolves - counts[roleSeer] - counts[roleWitch] - counts[roleHunter]
 	return counts
@@ -303,6 +317,8 @@ func (g *game) cancelDeal() {
 func (g *game) startNight() {
 	g.Phase = phaseNightWolf
 	g.WolfVotes = make(map[int64]int64)
+	g.WolfOrder = g.roleIDs(roleWolf, true)
+	g.WolfTurn = 0
 	g.WolfVictim = 0
 	g.SeerActed, g.WitchActed = false, false
 	g.WitchHeal, g.WitchPoison = 0, 0
@@ -311,11 +327,13 @@ func (g *game) startNight() {
 	g.Speeches = nil
 	g.Votes = nil
 	g.VoteTargets = nil
+	g.NightDeaths = nil
+	g.LastWords = nil
 	g.touch()
 }
 
 func (g *game) wolfVote(actor, target int64) (wolfVoteResult, error) {
-	r := wolfVoteResult{Needed: g.aliveRoleCount(roleWolf)}
+	r := wolfVoteResult{Needed: len(g.WolfOrder)}
 	if g.Phase != phaseNightWolf {
 		return r, errors.New("现在不是狼人行动阶段")
 	}
@@ -329,34 +347,34 @@ func (g *game) wolfVote(actor, target int64) (wolfVoteResult, error) {
 	if p.Role != roleWolf {
 		return r, errors.New("你不是狼人")
 	}
-	t := g.Players[target]
-	if t == nil || !t.Alive {
-		return r, errInvalidTarget
+	if g.currentWolf() != actor {
+		return r, errors.New("还没轮到你刀人，请等待上一名狼队友行动")
 	}
-	if t.Role == roleWolf {
-		return r, errors.New("不能选择狼人队友")
+	if target != 0 {
+		t := g.Players[target]
+		if t == nil || !t.Alive {
+			return r, errInvalidTarget
+		}
+		if t.Role == roleWolf && target != actor {
+			return r, errors.New("不能刀其他狼队友，但可以选择自刀")
+		}
 	}
-	_, r.Changed = g.WolfVotes[actor]
 	g.WolfVotes[actor] = target
+	g.WolfTurn++
 	r.Cast = len(g.WolfVotes)
 	g.touch()
 	if r.Cast < r.Needed {
+		r.NextWolf = g.currentWolf()
 		return r, nil
 	}
 	return g.finishWolfVotes(r), nil
 }
 
-func (g *game) forceWolfVotes() wolfVoteResult {
-	r := wolfVoteResult{Needed: g.aliveRoleCount(roleWolf)}
-	for _, id := range g.aliveIDs() {
-		if g.Players[id].Role == roleWolf {
-			if _, ok := g.WolfVotes[id]; !ok {
-				g.WolfVotes[id] = 0
-			}
-		}
+func (g *game) currentWolf() int64 {
+	if g.Phase != phaseNightWolf || g.WolfTurn >= len(g.WolfOrder) {
+		return 0
 	}
-	r.Cast = len(g.WolfVotes)
-	return g.finishWolfVotes(r)
+	return g.WolfOrder[g.WolfTurn]
 }
 
 func (g *game) finishWolfVotes(r wolfVoteResult) wolfVoteResult {
@@ -453,6 +471,9 @@ func (g *game) witchAct(actor int64, action string, target int64) (nightResult, 
 		if g.WolfVictim == 0 {
 			return nightResult{}, errors.New("本夜没有狼人击杀目标")
 		}
+		if g.WolfVictim == actor && g.Round > 1 {
+			return nightResult{}, errors.New("女巫只有首夜可以自救")
+		}
 		g.WitchHeal = g.WolfVictim
 		g.AntidoteUsed = true
 	case "毒":
@@ -499,6 +520,60 @@ func (g *game) resolveNight() nightResult {
 			g.Players[id].Alive = false
 			r.Deaths = append(r.Deaths, death{ID: id, Role: g.Players[id].Role, Cause: cause})
 		}
+	}
+	if len(r.Deaths) > 0 {
+		g.Phase = phaseNightLastWords
+		g.NightDeaths = append([]death(nil), r.Deaths...)
+		g.LastWords = make(map[int64]string, len(r.Deaths))
+		r.AwaitingLastWords = true
+		g.touch()
+		return r
+	}
+	return g.finalizeNight()
+}
+
+func (g *game) submitLastWords(actor int64, text string) (nightResult, error) {
+	if g.Phase != phaseNightLastWords {
+		return nightResult{}, errors.New("现在不是夜间遗言阶段")
+	}
+	eligible := false
+	for _, d := range g.NightDeaths {
+		if d.ID == actor {
+			eligible = true
+			break
+		}
+	}
+	if !eligible {
+		return nightResult{}, errors.New("你本夜没有遗言资格")
+	}
+	if _, ok := g.LastWords[actor]; ok {
+		return nightResult{}, errors.New("你已经提交过遗言了")
+	}
+	text = strings.TrimSpace(text)
+	if text == "放弃" {
+		text = ""
+	}
+	if utf8.RuneCountInString(text) > maxSpeechRunes {
+		return nightResult{}, fmt.Errorf("遗言不能超过%d个字", maxSpeechRunes)
+	}
+	g.LastWords[actor] = text
+	g.touch()
+	if len(g.LastWords) < len(g.NightDeaths) {
+		return nightResult{Complete: true, AwaitingLastWords: true, Deaths: append([]death(nil), g.NightDeaths...)}, nil
+	}
+	return g.finalizeNight(), nil
+}
+
+func (g *game) forceLastWords() nightResult { return g.finalizeNight() }
+
+func (g *game) finalizeNight() nightResult {
+	r := nightResult{
+		Complete:  true,
+		Deaths:    append([]death(nil), g.NightDeaths...),
+		LastWords: make(map[int64]string, len(g.LastWords)),
+	}
+	for id, words := range g.LastWords {
+		r.LastWords[id] = words
 	}
 	for _, d := range r.Deaths {
 		if d.Role == roleHunter && d.Cause != "女巫毒杀" {
@@ -586,6 +661,34 @@ func (g *game) beginVoting() {
 	g.Votes = make(map[int64]int64)
 	g.VoteTargets = nil
 	g.touch()
+}
+
+// explode 允许存活狼人在白天发言或放逐投票阶段公开身份并立即出局。
+// 自爆会废弃尚未完成的发言和投票，若游戏未结束则直接进入下一夜。
+func (g *game) explode(actor int64) (explosionResult, error) {
+	var result explosionResult
+	if g.Phase != phaseDay && g.Phase != phaseVoting {
+		return result, errors.New("只能在白天发言或放逐投票阶段自爆")
+	}
+	p := g.Players[actor]
+	if p == nil {
+		return result, errNotJoined
+	}
+	if !p.Alive {
+		return result, errPlayerDead
+	}
+	if p.Role != roleWolf {
+		return result, errors.New("只有狼人可以自爆")
+	}
+	p.Alive = false
+	if winner := g.winner(); winner != "" {
+		result.Winner = winner
+		g.finish(&result.Reveal)
+		return result, nil
+	}
+	g.Round++
+	g.startNight()
+	return result, nil
 }
 
 func (g *game) vote(actor, target int64) (voteResult, error) {
@@ -697,21 +800,23 @@ func (g *game) hunterShoot(actor, target int64) (hunterResult, error) {
 }
 
 func (g *game) winner() string {
-	wolves, good := 0, 0
+	wolves, villagers, gods := 0, 0, 0
 	for _, p := range g.Players {
 		if !p.Alive {
 			continue
 		}
 		if p.Role == roleWolf {
 			wolves++
+		} else if p.Role == roleVillager {
+			villagers++
 		} else {
-			good++
+			gods++
 		}
 	}
 	if wolves == 0 {
 		return "好人"
 	}
-	if wolves >= good {
+	if villagers == 0 || gods == 0 || wolves >= villagers+gods {
 		return "狼人"
 	}
 	return ""
@@ -761,6 +866,8 @@ func (g *game) voteProgress() (voted, pending []int64) {
 }
 func (g *game) resetRound() {
 	g.WolfVotes = nil
+	g.WolfOrder = nil
+	g.WolfTurn = 0
 	g.WolfVictim = 0
 	g.SeerActed = false
 	g.WitchActed = false
@@ -772,6 +879,27 @@ func (g *game) resetRound() {
 	g.VoteTargets = nil
 	g.PendingHunter = 0
 	g.HunterDeaths = nil
+	g.NightDeaths = nil
+	g.LastWords = nil
+}
+
+func (g *game) roleIDs(want role, alive bool) []int64 {
+	var ids []int64
+	for _, id := range g.JoinOrder {
+		p := g.Players[id]
+		if p.Role == want && (!alive || p.Alive) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func (g *game) makeReveal() reveal {
+	r := reveal{Roles: make(map[int64]role, len(g.Players))}
+	for id, p := range g.Players {
+		r.Roles[id] = p.Role
+	}
+	return r
 }
 func (g *game) touch() { g.UpdatedAt = time.Now() }
 func (g *game) expired(now time.Time) bool {

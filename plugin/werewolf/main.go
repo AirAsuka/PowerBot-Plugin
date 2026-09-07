@@ -30,14 +30,16 @@ const helpText = `狼人杀（6—12人，机器人主持）
 
 其他指令：狼人杀玩家、狼人杀状态、退出狼人杀、结束狼人杀
 房主可发送“狼人杀开始投票”跳过剩余发言。
+存活狼人在白天可发送“狼人自爆”，立即出局并结束白天、直接进入下一夜。
 
 私聊指令：
-狼人刀人 QQ号 / 狼人查验 QQ号
+狼人刀人 QQ号 / 狼人刀人 不刀 / 狼人查验 QQ号
 女巫行动 救 / 女巫行动 毒 QQ号 / 女巫行动 跳过
+狼人杀遗言 内容 / 狼人杀遗言 放弃
 同时参与多个群时，在动作后加群号，例如“狼人查验 群号 QQ号”。
 
-角色配置：6—7人含狼人、预言家、女巫和平民；8人起加入猎人；9人起3狼；12人4狼。
-胜负规则：狼人全部出局则好人胜；存活狼人数达到其他存活人数则狼人胜。
+角色配置：6人局为预言家、猎人、2平民、2狼；7人加入女巫；8人3狼2民；9人3狼3民。
+胜负规则：狼人全部出局则好人胜；平民全灭、神职全灭或狼人达到人数优势则狼人胜。
 提示：所有玩家开局前应先添加机器人好友并私聊任意消息。`
 
 var (
@@ -59,6 +61,7 @@ func init() {
 	engine.OnFullMatch("开始狼人杀", zero.OnlyGroup).SetBlock(true).Handle(startGame)
 	engine.OnFullMatch("狼人杀状态", zero.OnlyGroup).SetBlock(true).Handle(showStatus)
 	engine.OnFullMatch("狼人杀开始投票", zero.OnlyGroup).SetBlock(true).Handle(skipToVote)
+	engine.OnFullMatch("狼人自爆", zero.OnlyGroup).SetBlock(true).Handle(handleExplosion)
 	engine.OnFullMatch("结束狼人杀", zero.OnlyGroup).SetBlock(true).Handle(endGame)
 	engine.OnRegex(`^狼人杀发言\s+([\s\S]+)$`, zero.OnlyGroup).SetBlock(true).Handle(handleSpeech)
 	engine.OnRegex(votePattern, zero.OnlyGroup).SetBlock(true).Handle(handleVote)
@@ -68,6 +71,7 @@ func init() {
 	engine.OnRegex(`^狼人刀人\s+(.+)$`, zero.OnlyPrivate).SetBlock(true).Handle(handleWolfAction)
 	engine.OnRegex(`^狼人查验\s+(.+)$`, zero.OnlyPrivate).SetBlock(true).Handle(handleInspect)
 	engine.OnRegex(`^女巫行动\s+(.+)$`, zero.OnlyPrivate).SetBlock(true).Handle(handleWitch)
+	engine.OnRegex(`^狼人杀遗言\s+([\s\S]+)$`, zero.OnlyPrivate).SetBlock(true).Handle(handleLastWords)
 }
 
 func createRoom(ctx *zero.Ctx) {
@@ -208,6 +212,31 @@ func skipToVote(ctx *zero.Ctx) {
 	ctx.SendChain(message.Text("已进入放逐投票，请发送“狼人杀投票 @玩家”。"))
 }
 
+func handleExplosion(ctx *zero.Ctx) {
+	var result explosionResult
+	var room *game
+	var name string
+	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+		room = g
+		var actionErr error
+		result, actionErr = g.explode(ctx.Event.UserID)
+		if actionErr == nil {
+			name = g.Players[ctx.Event.UserID].Name
+		}
+		return actionErr
+	})
+	if err != nil {
+		sendError(ctx, err)
+		return
+	}
+	if result.Winner != "" {
+		finishAnnouncement(ctx, ctx.Event.GroupID, room, name+" 自爆并以狼人身份出局。\n"+result.Winner+"阵营获胜！", result.Reveal)
+		return
+	}
+	ctx.SendChain(message.Text(name, " 自爆并以狼人身份出局！白天发言及投票立即结束，天黑请闭眼。"))
+	promptWolves(ctx, ctx.Event.GroupID, room)
+}
+
 func handleVote(ctx *zero.Ctx) {
 	target, err := matchedTarget(ctx)
 	if err != nil {
@@ -312,7 +341,13 @@ func showStatus(ctx *zero.Ctx) {
 		if g.Phase == phaseLobby {
 			fmt.Fprintf(&b, "\n玩家：%d/%d（至少%d人开局）", len(g.Players), maxPlayers, minPlayers)
 		} else {
-			fmt.Fprintf(&b, "\n轮次：第%d天\n存活：%s", g.Round, names(g, g.aliveIDs()))
+			fmt.Fprintf(&b, "\n轮次：第%d天", g.Round)
+			if g.Phase == phaseNightLastWords {
+				fmt.Fprintf(&b, "\n夜间结算中，遗言进度：%d/%d", len(g.LastWords), len(g.NightDeaths))
+				text = b.String()
+				return nil
+			}
+			fmt.Fprintf(&b, "\n存活：%s", names(g, g.aliveIDs()))
 			switch g.Phase {
 			case phaseNightWolf:
 				fmt.Fprintf(&b, "\n狼人行动进度：%d/%d", len(g.WolfVotes), g.aliveRoleCount(roleWolf))
@@ -357,7 +392,7 @@ func endGame(ctx *zero.Ctx) {
 
 func handleWolfAction(ctx *zero.Ctx) {
 	fields := strings.Fields(ctx.State["regex_matched"].([]string)[1])
-	gid, target, err := privateTarget(ctx.Event.UserID, phaseNightWolf, []role{roleWolf}, fields)
+	gid, target, err := privateWolfChoice(ctx.Event.UserID, fields)
 	if err != nil {
 		sendError(ctx, err)
 		return
@@ -369,20 +404,12 @@ func handleWolfAction(ctx *zero.Ctx) {
 		sendError(ctx, err)
 		return
 	}
-	if !r.Ready {
-		word := "选择已记录"
-		if r.Changed {
-			word = "选择已修改"
-		}
-		ctx.SendChain(message.Text(word, "（", r.Cast, "/", r.Needed, "）"))
-		return
+	choice := "不刀"
+	if target != 0 {
+		choice = room.Players[target].Name
 	}
-	ctx.SendChain(message.Text("选择已记录，狼人行动结束。"))
-	if r.Outcome.Complete {
-		announceNight(ctx, gid, room, r.Outcome)
-		return
-	}
-	promptSpecial(ctx, gid, room, r.Victim)
+	ctx.SendChain(message.Text("选择已记录：", choice, "（", r.Cast, "/", r.Needed, "）"))
+	continueWolfActions(ctx, gid, room, r, ctx.Event.UserID, target)
 }
 
 func handleInspect(ctx *zero.Ctx) {
@@ -405,7 +432,7 @@ func handleInspect(ctx *zero.Ctx) {
 	}
 	ctx.SendChain(message.Text("查验结果：", room.Players[target].Name, " 是", identity, "。"))
 	if r.Outcome.Complete {
-		announceNight(ctx, gid, room, r.Outcome)
+		processNightOutcome(ctx, gid, room, r.Outcome)
 	}
 }
 
@@ -460,59 +487,134 @@ func handleWitch(ctx *zero.Ctx) {
 	}
 	ctx.SendChain(message.Text("女巫行动已记录。"))
 	if r.Complete {
-		announceNight(ctx, gid, room, r)
+		processNightOutcome(ctx, gid, room, r)
+	}
+}
+
+func handleLastWords(ctx *zero.Ctx) {
+	raw := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
+	gids := rooms.pendingLastWords(ctx.Event.UserID)
+	if len(gids) == 0 {
+		sendError(ctx, errors.New("没有找到你可以提交遗言的房间"))
+		return
+	}
+	gid := gids[0]
+	text := raw
+	parts := strings.SplitN(raw, " ", 2)
+	if len(gids) > 1 {
+		if len(parts) != 2 {
+			sendError(ctx, errors.New("你在多个群有遗言资格，请使用“狼人杀遗言 群号 内容”"))
+			return
+		}
+		var err error
+		gid, err = strconv.ParseInt(parts[0], 10, 64)
+		if err != nil {
+			sendError(ctx, errors.New("群号格式错误"))
+			return
+		}
+		text = parts[1]
+	} else if len(parts) == 2 && parts[0] == strconv.FormatInt(gid, 10) {
+		text = parts[1]
+	}
+	var result nightResult
+	var room *game
+	err := rooms.withRoom(gid, func(g *game) error {
+		room = g
+		var actionErr error
+		result, actionErr = g.submitLastWords(ctx.Event.UserID, text)
+		return actionErr
+	})
+	if err != nil {
+		sendError(ctx, err)
+		return
+	}
+	ctx.SendChain(message.Text("遗言已记录。"))
+	if !result.AwaitingLastWords {
+		announceNight(ctx, gid, room, result)
 	}
 }
 
 func promptWolves(ctx *zero.Ctx, gid int64, expected *game) {
-	var wolves []int64
-	var targets string
-	round := 0
+	var wolf int64
 	_ = rooms.withRoom(gid, func(g *game) error {
 		if g != expected || g.Phase != phaseNightWolf {
 			return errors.New("阶段已变化")
 		}
-		wolves = g.roleIDs(roleWolf, true)
+		wolf = g.currentWolf()
+		return nil
+	})
+	if wolf != 0 {
+		promptWolf(ctx, gid, expected, wolf, 0, 0)
+	}
+}
+
+func promptWolf(ctx *zero.Ctx, gid int64, expected *game, wolf, previousWolf, previousTarget int64) {
+	var prompt string
+	round := 0
+	valid := false
+	_ = rooms.withRoom(gid, func(g *game) error {
+		if g != expected || g.Phase != phaseNightWolf || g.currentWolf() != wolf {
+			return errors.New("阶段已变化")
+		}
 		candidates := make([]int64, 0)
 		for _, id := range g.aliveIDs() {
-			if g.Players[id].Role != roleWolf {
+			p := g.Players[id]
+			if p.Role != roleWolf || id == wolf {
 				candidates = append(candidates, id)
 			}
 		}
-		targets = targetList(g, candidates)
+		previous := ""
+		if previousWolf != 0 {
+			choice := "不刀"
+			if previousTarget != 0 {
+				choice = g.Players[previousTarget].Name + "（" + strconv.FormatInt(previousTarget, 10) + "）"
+			}
+			previous = "\n上一名狼队友 " + g.Players[previousWolf].Name + " 投给了：" + choice + "。"
+		}
 		round = g.Round
+		prompt = fmt.Sprintf("【狼人杀】第%d夜\n轮到你刀人。狼人夜间可以互相私聊讨论。%s\n发送：狼人刀人 目标QQ号，或：狼人刀人 不刀\n你可以自刀，但不能刀其他狼队友。\n可选目标：\n%s", round, previous, targetList(g, candidates))
+		valid = true
 		return nil
 	})
-	for _, id := range wolves {
-		ctx.SendPrivateMessage(id, message.Text("【狼人杀】第", round, "夜\n你是狼人，请在2分钟内发送：狼人刀人 目标QQ号\n可选目标：\n", targets))
+	if !valid {
+		return
 	}
+	ctx.SendPrivateMessage(wolf, message.Text(prompt))
 	time.AfterFunc(nightTimeout, func() {
 		var r wolfVoteResult
 		ok := false
 		_ = rooms.withRoom(gid, func(g *game) error {
-			if g != expected || g.Phase != phaseNightWolf || g.Round != round {
+			if g != expected || g.Phase != phaseNightWolf || g.Round != round || g.currentWolf() != wolf {
 				return errors.New("阶段已变化")
 			}
-			r = g.forceWolfVotes()
-			ok = true
-			return nil
+			var err error
+			r, err = g.wolfVote(wolf, 0)
+			ok = err == nil
+			return err
 		})
-		if !ok {
-			return
-		}
-		if r.Outcome.Complete {
-			announceNight(ctx, gid, expected, r.Outcome)
-		} else {
-			ctx.SendGroupMessage(gid, message.Text("狼人行动时间结束，进入神职行动阶段。"))
-			promptSpecial(ctx, gid, expected, r.Victim)
+		if ok {
+			continueWolfActions(ctx, gid, expected, r, wolf, 0)
 		}
 	})
+}
+
+func continueWolfActions(ctx *zero.Ctx, gid int64, g *game, r wolfVoteResult, previousWolf, previousTarget int64) {
+	if !r.Ready {
+		promptWolf(ctx, gid, g, r.NextWolf, previousWolf, previousTarget)
+		return
+	}
+	ctx.SendGroupMessage(gid, message.Text("狼人已全部完成投票，进入神职行动阶段。"))
+	if r.Outcome.Complete {
+		processNightOutcome(ctx, gid, g, r.Outcome)
+		return
+	}
+	promptSpecial(ctx, gid, g, r.Victim)
 }
 
 func promptSpecial(ctx *zero.Ctx, gid int64, expected *game, victim int64) {
 	round := 0
 	var seer, witch int64
-	var targets, victimName string
+	var targets, witchTargets, victimName string
 	var antidoteAvailable, poisonAvailable bool
 	_ = rooms.withRoom(gid, func(g *game) error {
 		if g != expected || g.Phase != phaseNightSpecial {
@@ -533,6 +635,13 @@ func promptSpecial(ctx *zero.Ctx, gid int64, expected *game, victim int64) {
 			}
 		}
 		targets = targetList(g, candidates)
+		candidates = candidates[:0]
+		for _, id := range g.aliveIDs() {
+			if id != witch {
+				candidates = append(candidates, id)
+			}
+		}
+		witchTargets = targetList(g, candidates)
 		if victim != 0 {
 			victimName = g.Players[victim].Name
 		}
@@ -548,7 +657,11 @@ func promptSpecial(ctx *zero.Ctx, gid int64, expected *game, victim int64) {
 		if victim != 0 {
 			tip = "狼人目标是 " + victimName + "。"
 		}
-		ctx.SendPrivateMessage(witch, message.Text("【狼人杀】第", round, "夜\n", tip, "\n请发送：女巫行动 救 / 女巫行动 毒 QQ号 / 女巫行动 跳过\n解药可用：", antidoteAvailable, "，毒药可用：", poisonAvailable))
+		selfSaveTip := "首夜可以自救。"
+		if round > 1 {
+			selfSaveTip = "首夜已过，不能自救。"
+		}
+		ctx.SendPrivateMessage(witch, message.Text("【狼人杀】第", round, "夜\n", tip, "\n请发送：女巫行动 救 / 女巫行动 毒 QQ号 / 女巫行动 跳过\n", selfSaveTip, "\n解药可用：", antidoteAvailable, "，毒药可用：", poisonAvailable, "\n毒药可选目标：\n", witchTargets))
 	}
 	time.AfterFunc(nightTimeout, func() {
 		var r nightResult
@@ -562,7 +675,47 @@ func promptSpecial(ctx *zero.Ctx, gid int64, expected *game, victim int64) {
 			return nil
 		})
 		if ok {
-			announceNight(ctx, gid, expected, r)
+			processNightOutcome(ctx, gid, expected, r)
+		}
+	})
+}
+
+func processNightOutcome(ctx *zero.Ctx, gid int64, g *game, result nightResult) {
+	if result.AwaitingLastWords {
+		promptLastWords(ctx, gid, g, result.Deaths)
+		return
+	}
+	announceNight(ctx, gid, g, result)
+}
+
+func promptLastWords(ctx *zero.Ctx, gid int64, expected *game, deaths []death) {
+	round := 0
+	_ = rooms.withRoom(gid, func(g *game) error {
+		if g != expected || g.Phase != phaseNightLastWords {
+			return errors.New("阶段已变化")
+		}
+		round = g.Round
+		return nil
+	})
+	if round == 0 {
+		return
+	}
+	for _, d := range deaths {
+		ctx.SendPrivateMessage(d.ID, message.Text("【狼人杀】你在第", round, "夜出局。请在2分钟内私聊发送一句遗言：\n狼人杀遗言 你的遗言\n也可以发送：狼人杀遗言 放弃"))
+	}
+	time.AfterFunc(nightTimeout, func() {
+		var result nightResult
+		resolved := false
+		_ = rooms.withRoom(gid, func(g *game) error {
+			if g != expected || g.Phase != phaseNightLastWords || g.Round != round {
+				return errors.New("阶段已变化")
+			}
+			result = g.forceLastWords()
+			resolved = true
+			return nil
+		})
+		if resolved {
+			announceNight(ctx, gid, expected, result)
 		}
 	})
 }
@@ -580,6 +733,13 @@ func announceNight(ctx *zero.Ctx, gid int64, g *game, r nightResult) {
 			b.WriteString(g.Players[d.ID].Name)
 		}
 		b.WriteString("。")
+		for _, d := range r.Deaths {
+			words := strings.TrimSpace(r.LastWords[d.ID])
+			if words == "" {
+				words = "未留遗言"
+			}
+			fmt.Fprintf(&b, "\n%s的遗言：%s", g.Players[d.ID].Name, words)
+		}
 	}
 	if r.Winner != "" {
 		finishAnnouncement(ctx, gid, g, b.String()+"\n"+r.Winner+"阵营获胜！", r.Reveal)
@@ -661,6 +821,35 @@ func privateTarget(uid int64, p phase, roles []role, fields []string) (int64, in
 	return gid, target, nil
 }
 
+func privateWolfChoice(uid int64, fields []string) (int64, int64, error) {
+	gids := rooms.pending(uid, phaseNightWolf, roleWolf)
+	if len(gids) == 0 {
+		return 0, 0, errors.New("没有找到你当前可行动的狼人房间")
+	}
+	var gid int64
+	var choice string
+	if len(gids) == 1 && len(fields) == 1 {
+		gid, choice = gids[0], fields[0]
+	} else if len(fields) == 2 {
+		var err error
+		gid, err = strconv.ParseInt(fields[0], 10, 64)
+		if err != nil || gid <= 0 {
+			return 0, 0, errors.New("群号格式错误")
+		}
+		choice = fields[1]
+	} else {
+		return 0, 0, errors.New("格式：狼人刀人 目标QQ号 / 狼人刀人 不刀；多房间时在目标前填写群号")
+	}
+	if choice == "不刀" || choice == "空刀" {
+		return gid, 0, nil
+	}
+	target, err := strconv.ParseInt(choice, 10, 64)
+	if err != nil || target <= 0 {
+		return 0, 0, errors.New("目标QQ号格式错误")
+	}
+	return gid, target, nil
+}
+
 func matchedTarget(ctx *zero.Ctx) (int64, error) {
 	m := ctx.State["regex_matched"].([]string)
 	s := m[1]
@@ -703,12 +892,16 @@ func targetList(g *game, ids []int64) string {
 }
 func setupText(n int) string {
 	c := roleCounts(n)
-	return fmt.Sprintf("本局配置：%d狼、1预言家、1女巫、%d猎人、%d平民。", c[roleWolf], c[roleHunter], c[roleVillager])
+	return fmt.Sprintf("本局配置：%d狼、%d预言家、%d女巫、%d猎人、%d平民。", c[roleWolf], c[roleSeer], c[roleWitch], c[roleHunter], c[roleVillager])
 }
 func secretText(g *game, s secret) string {
 	text := "【狼人杀】游戏开始\n你的身份是：" + s.Role.String()
 	if s.Role == roleWolf {
-		text += "\n你的狼人队友：" + names(g, s.Teammates) + "\n夜晚请按提示私聊刀人。"
+		teammates := "暂无"
+		if len(s.Teammates) > 0 {
+			teammates = targetList(g, s.Teammates)
+		}
+		text += "\n你的狼人队友（昵称：QQ）：\n" + teammates + "\n夜晚狼人可以互相私聊讨论；机器人会按顺序私聊每名狼人刀人。"
 	} else if s.Role == roleSeer {
 		text += "\n每夜可查验一名存活玩家是否为狼人。"
 	} else if s.Role == roleWitch {
@@ -724,22 +917,5 @@ func revealText(g *game, r reveal) string {
 		parts = append(parts, fmt.Sprintf("%s：%s", g.Players[id].Name, r.Roles[id]))
 	}
 	return "身份揭晓：\n" + strings.Join(parts, "\n")
-}
-func (g *game) roleIDs(want role, alive bool) []int64 {
-	var ids []int64
-	for _, id := range g.JoinOrder {
-		p := g.Players[id]
-		if p.Role == want && (!alive || p.Alive) {
-			ids = append(ids, id)
-		}
-	}
-	return ids
-}
-func (g *game) makeReveal() reveal {
-	r := reveal{Roles: make(map[int64]role, len(g.Players))}
-	for id, p := range g.Players {
-		r.Roles[id] = p.Role
-	}
-	return r
 }
 func sendError(ctx *zero.Ctx, err error) { ctx.SendChain(message.Text("[狼人杀] ", err.Error())) }
