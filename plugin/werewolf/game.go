@@ -192,12 +192,13 @@ type game struct {
 	WitchHeal, WitchPoison   int64
 	AntidoteUsed, PoisonUsed bool
 
-	DayOrder      []int64
-	DayTurn       int
-	Speeches      []speech
-	SpeechHistory []speechArchive
-	Votes         map[int64]int64
-	VoteTargets   map[int64]struct{}
+	DayOrder        []int64
+	DayTurn         int
+	Speeches        []speech
+	SpeechHistory   []speechArchive
+	Votes           map[int64]int64
+	VoteTargets     map[int64]struct{}
+	VoteSummarySent bool
 
 	PendingHunter   int64
 	HunterFromNight bool
@@ -341,6 +342,7 @@ func (g *game) startNight() {
 	g.Speeches = nil
 	g.Votes = nil
 	g.VoteTargets = nil
+	g.VoteSummarySent = false
 	g.NightDeaths = nil
 	g.LastWords = nil
 	g.touch()
@@ -625,6 +627,7 @@ func (g *game) startDay(deaths []death) {
 	g.Speeches = nil
 	g.Votes = nil
 	g.VoteTargets = nil
+	g.VoteSummarySent = false
 	g.Phase = phaseDay
 	g.touch()
 }
@@ -684,6 +687,7 @@ func (g *game) beginVoting() {
 	g.Phase = phaseVoting
 	g.Votes = make(map[int64]int64)
 	g.VoteTargets = nil
+	g.VoteSummarySent = false
 	g.touch()
 }
 
@@ -777,6 +781,7 @@ func (g *game) vote(actor, target int64) (voteResult, error) {
 	if len(r.Tie) > 1 {
 		g.Votes = make(map[int64]int64)
 		g.VoteTargets = make(map[int64]struct{}, len(r.Tie))
+		g.VoteSummarySent = false
 		for _, id := range r.Tie {
 			g.VoteTargets[id] = struct{}{}
 		}
@@ -947,6 +952,7 @@ func (g *game) resetRound() {
 	g.SpeechHistory = nil
 	g.Votes = nil
 	g.VoteTargets = nil
+	g.VoteSummarySent = false
 	g.PendingHunter = 0
 	g.HunterDeaths = nil
 	g.NightDeaths = nil

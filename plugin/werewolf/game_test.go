@@ -124,6 +124,7 @@ func TestTieRevote(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	g.VoteSummarySent = true
 	votes := [][2]int64{{1, 3}, {2, 4}, {3, 4}, {4, 3}, {5, 3}, {6, 4}, {7, 3}, {8, 4}}
 	var result voteResult
 	for _, v := range votes {
@@ -133,7 +134,7 @@ func TestTieRevote(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(result.Tie) != 2 || len(g.VoteTargets) != 2 || len(g.Votes) != 0 {
+	if len(result.Tie) != 2 || len(g.VoteTargets) != 2 || len(g.Votes) != 0 || g.VoteSummarySent {
 		t.Fatalf("tie result=%+v", result)
 	}
 	if _, err := g.vote(1, 5); err == nil {
@@ -180,11 +181,16 @@ func TestVoteArchivesEverySpeechForLaterDays(t *testing.T) {
 	g.startDay(nil)
 	for g.Phase == phaseDay {
 		speaker := g.currentSpeaker()
-		if _, _, err := g.speak(speaker, fmt.Sprintf("玩家%d的发言", speaker)); err != nil {
+		if _, _, err := g.speak(speaker, fmt.Sprintf("玩家%d的发言", speaker), 1000+speaker); err != nil {
 			t.Fatal(err)
 		}
 	}
 	want := append([]speech(nil), g.Speeches...)
+	for _, item := range want {
+		if item.SourceMessageID == 0 {
+			t.Fatalf("speech did not retain its source message ID: %+v", item)
+		}
+	}
 
 	for _, voter := range g.aliveIDs() {
 		target := int64(8)
