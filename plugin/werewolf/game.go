@@ -72,6 +72,10 @@ func (p phase) String() string {
 	}
 }
 
+func (p phase) isNight() bool {
+	return p == phaseNightWolf || p == phaseNightSpecial || p == phaseNightLastWords
+}
+
 type role uint8
 
 const (
@@ -129,6 +133,14 @@ type speechArchive struct {
 	Round    int
 	Speeches []speech
 }
+
+type wolfBroadcast struct {
+	SenderName string
+	Text       string
+	Recipients []int64
+}
+
+func (b wolfBroadcast) messageText() string { return b.SenderName + "广播 ：" + b.Text }
 
 type nightResult struct {
 	Complete          bool
@@ -424,6 +436,45 @@ func (g *game) wolfVote(actor, target int64) (wolfVoteResult, error) {
 		return r, nil
 	}
 	return g.finishWolfVotes(r), nil
+}
+
+// broadcastToWolves validates a night-time wolf broadcast and returns the
+// living teammates that should receive it. Sending is kept outside game so it
+// does not hold the room-store lock while calling the bot API.
+func (g *game) broadcastToWolves(actor int64, text string) (wolfBroadcast, error) {
+	r := wolfBroadcast{}
+	if !g.Phase.isNight() {
+		return r, errors.New("现在不是夜晚，不能使用狼队广播")
+	}
+	p := g.Players[actor]
+	if p == nil {
+		return r, errNotJoined
+	}
+	if !p.Alive {
+		return r, errPlayerDead
+	}
+	if p.Role != roleWolf {
+		return r, errors.New("只有狼人可以使用狼队广播")
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return r, errors.New("广播内容不能为空")
+	}
+	if utf8.RuneCountInString(text) > maxSpeechRunes {
+		return r, fmt.Errorf("广播内容不能超过%d个字", maxSpeechRunes)
+	}
+	for _, id := range g.JoinOrder {
+		teammate := g.Players[id]
+		if id != actor && teammate.Alive && teammate.Role == roleWolf {
+			r.Recipients = append(r.Recipients, id)
+		}
+	}
+	if len(r.Recipients) == 0 {
+		return wolfBroadcast{}, errors.New("没有存活的狼队友可以接收广播")
+	}
+	r.SenderName = p.Name
+	r.Text = text
+	return r, nil
 }
 
 func (g *game) currentWolf() int64 {

@@ -108,6 +108,24 @@ func (s *roomStore) pending(userID int64, want phase, roles ...role) []int64 {
 	return out
 }
 
+func (s *roomStore) pendingWolfBroadcasts(userID int64) []int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []int64
+	for gid := range s.rooms {
+		g := s.room(gid)
+		if g == nil || !g.Phase.isNight() {
+			continue
+		}
+		p := g.Players[userID]
+		if p != nil && p.Alive && p.Role == roleWolf {
+			out = append(out, gid)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
 func (s *roomStore) pendingLastWords(userID int64) []int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()

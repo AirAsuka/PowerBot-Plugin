@@ -477,6 +477,72 @@ func TestWolvesActSequentially(t *testing.T) {
 	}
 }
 
+func TestWolfBroadcastReachesLivingTeammatesAtNight(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager)
+	g.Players[3].Alive = false
+
+	broadcast, err := g.broadcastToWolves(1, "  刀小明  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if broadcast.SenderName != "玩家1" || broadcast.Text != "刀小明" || !slices.Equal(broadcast.Recipients, []int64{2}) {
+		t.Fatalf("broadcast=%+v", broadcast)
+	}
+	if got, want := broadcast.messageText(), "玩家1广播 ：刀小明"; got != want {
+		t.Fatalf("broadcast text = %q, want %q", got, want)
+	}
+
+	g.Phase = phaseNightSpecial
+	if _, err := g.broadcastToWolves(2, "女巫可能会救"); err != nil {
+		t.Fatalf("broadcast during special phase rejected: %v", err)
+	}
+	g.Phase = phaseNightLastWords
+	if _, err := g.broadcastToWolves(2, "等天亮"); err != nil {
+		t.Fatalf("broadcast during last-words phase rejected: %v", err)
+	}
+}
+
+func TestWolfBroadcastRejectsInvalidSenderOrPhase(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	if _, err := g.broadcastToWolves(3, "冒充狼人"); err == nil {
+		t.Fatal("non-wolf broadcast was accepted")
+	}
+	g.Players[1].Alive = false
+	if _, err := g.broadcastToWolves(1, "死后交流"); err == nil {
+		t.Fatal("dead wolf broadcast was accepted")
+	}
+	g.Players[1].Alive = true
+	g.Phase = phaseDay
+	if _, err := g.broadcastToWolves(1, "白天交流"); err == nil {
+		t.Fatal("daytime broadcast was accepted")
+	}
+}
+
+func TestResolveWolfBroadcastRoom(t *testing.T) {
+	tests := []struct {
+		name     string
+		gids     []int64
+		raw      string
+		wantGID  int64
+		wantText string
+		wantErr  bool
+	}{
+		{name: "single room", gids: []int64{100}, raw: "刀小明", wantGID: 100, wantText: "刀小明"},
+		{name: "single room explicit", gids: []int64{100}, raw: "100 刀 小明", wantGID: 100, wantText: "刀 小明"},
+		{name: "multiple rooms", gids: []int64{100, 200}, raw: "200 刀小明", wantGID: 200, wantText: "刀小明"},
+		{name: "multiple rooms missing group", gids: []int64{100, 200}, raw: "刀小明", wantErr: true},
+		{name: "unknown group", gids: []int64{100, 200}, raw: "300 刀小明", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gid, text, err := resolveWolfBroadcast(tt.gids, tt.raw)
+			if (err != nil) != tt.wantErr || gid != tt.wantGID || text != tt.wantText {
+				t.Fatalf("gid=%d text=%q err=%v", gid, text, err)
+			}
+		})
+	}
+}
+
 func TestWolfCanSelfKillOrChooseNoKill(t *testing.T) {
 	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
 	if _, err := g.wolfVote(1, 1); err != nil {

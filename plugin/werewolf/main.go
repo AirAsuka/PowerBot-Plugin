@@ -35,9 +35,10 @@ const helpText = `狼人杀（6—12人，机器人主持）
 
 私聊指令：
 狼人刀人 QQ号 / 狼人刀人 不刀 / 狼人查验 QQ号
+狼队广播 内容（夜晚发送给所有存活狼队友）
 女巫行动 救 / 女巫行动 毒 QQ号 / 女巫行动 跳过
 狼人杀遗言 内容 / 狼人杀遗言 放弃（夜间出局）
-同时参与多个群时，在动作后加群号，例如“狼人查验 群号 QQ号”。
+同时参与多个群时，在动作后加群号，例如“狼人查验 群号 QQ号”“狼队广播 群号 内容”。
 
 角色配置：6人局为预言家、猎人、2平民、2狼；7人加入女巫；8人3狼2民；9人3狼3民。
 胜负规则：狼人全部出局则好人胜；平民全灭、神职全灭或狼人达到人数优势则狼人胜。
@@ -71,6 +72,7 @@ func init() {
 	engine.OnFullMatch("猎人不开枪", zero.OnlyGroup).SetBlock(true).Handle(func(ctx *zero.Ctx) { resolveHunter(ctx, 0) })
 
 	engine.OnRegex(`^狼人刀人\s+(.+)$`, zero.OnlyPrivate).SetBlock(true).Handle(handleWolfAction)
+	engine.OnRegex(`^狼队广播\s+([\s\S]+)$`, zero.OnlyPrivate).SetBlock(true).Handle(handleWolfBroadcast)
 	engine.OnRegex(`^狼人查验\s+(.+)$`, zero.OnlyPrivate).SetBlock(true).Handle(handleInspect)
 	engine.OnRegex(`^女巫行动\s+(.+)$`, zero.OnlyPrivate).SetBlock(true).Handle(handleWitch)
 	engine.OnRegex(`^狼人杀遗言\s+([\s\S]+)$`, zero.OnlyPrivate).SetBlock(true).Handle(handleLastWords)
@@ -503,6 +505,38 @@ func handleWolfAction(ctx *zero.Ctx) {
 	continueWolfActions(ctx, gid, room, r, ctx.Event.UserID, target)
 }
 
+func handleWolfBroadcast(ctx *zero.Ctx) {
+	raw := strings.TrimSpace(ctx.State["regex_matched"].([]string)[1])
+	gids := rooms.pendingWolfBroadcasts(ctx.Event.UserID)
+	gid, text, err := resolveWolfBroadcast(gids, raw)
+	if err != nil {
+		sendError(ctx, err)
+		return
+	}
+	var broadcast wolfBroadcast
+	err = rooms.withRoom(gid, func(g *game) error {
+		var actionErr error
+		broadcast, actionErr = g.broadcastToWolves(ctx.Event.UserID, text)
+		return actionErr
+	})
+	if err != nil {
+		sendError(ctx, err)
+		return
+	}
+	notice := broadcast.messageText()
+	delivered := 0
+	for _, teammate := range broadcast.Recipients {
+		if ctx.SendPrivateMessage(teammate, message.Text(notice)) != 0 {
+			delivered++
+		}
+	}
+	if delivered != len(broadcast.Recipients) {
+		ctx.SendChain(message.Text("广播发送完成：", delivered, "/", len(broadcast.Recipients), " 名狼队友收到。未收到的玩家可能尚未添加机器人好友。"))
+		return
+	}
+	ctx.SendChain(message.Text("广播已发送给", delivered, "名狼队友。"))
+}
+
 func handleInspect(ctx *zero.Ctx) {
 	fields := strings.Fields(ctx.State["regex_matched"].([]string)[1])
 	gid, target, err := privateTarget(ctx.Event.UserID, phaseNightSpecial, []role{roleSeer}, fields)
@@ -709,7 +743,7 @@ func promptWolf(ctx *zero.Ctx, gid int64, expected *game, wolf, previousWolf, pr
 			}
 			previous = "\n上一名狼队友 " + g.Players[previousWolf].Name + " 投给了：" + choice + "。"
 		}
-		prompt = fmt.Sprintf("【狼人杀】第%d夜\n轮到你刀人。狼人夜间可以互相私聊讨论。%s\n发送：狼人刀人 目标QQ号，或：狼人刀人 不刀\n可以选择任意存活玩家，包括自己和狼队友。\n可选目标：\n%s", round, previous, targetList(g, candidates))
+		prompt = fmt.Sprintf("【狼人杀】第%d夜\n轮到你刀人。可私聊发送“狼队广播 内容”与存活狼队友讨论。%s\n发送：狼人刀人 目标QQ号，或：狼人刀人 不刀\n可以选择任意存活玩家，包括自己和狼队友。\n可选目标：\n%s", round, previous, targetList(g, candidates))
 		valid = true
 		return nil
 	})
@@ -1156,6 +1190,45 @@ func privateWolfChoice(uid int64, fields []string) (int64, int64, error) {
 	return gid, target, nil
 }
 
+func resolveWolfBroadcast(gids []int64, raw string) (int64, string, error) {
+	if len(gids) == 0 {
+		return 0, "", errors.New("没有找到你当前可广播的狼人房间")
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, "", errors.New("格式：狼队广播 内容；多房间时使用“狼队广播 群号 内容”")
+	}
+	first := raw
+	rest := ""
+	if fields := strings.Fields(raw); len(fields) > 0 {
+		first = fields[0]
+		rest = strings.TrimSpace(strings.TrimPrefix(raw, first))
+	}
+	if len(gids) == 1 {
+		gid := gids[0]
+		if first == strconv.FormatInt(gid, 10) {
+			if rest == "" {
+				return 0, "", errors.New("广播内容不能为空")
+			}
+			return gid, rest, nil
+		}
+		return gid, raw, nil
+	}
+	if rest == "" {
+		return 0, "", errors.New("你在多个群是存活狼人，请使用“狼队广播 群号 内容”")
+	}
+	gid, err := strconv.ParseInt(first, 10, 64)
+	if err != nil || gid <= 0 {
+		return 0, "", errors.New("群号格式错误")
+	}
+	for _, candidate := range gids {
+		if candidate == gid {
+			return gid, rest, nil
+		}
+	}
+	return 0, "", errors.New("没有找到你在该群的夜间狼人房间")
+}
+
 func matchedTarget(ctx *zero.Ctx) (int64, error) {
 	m := ctx.State["regex_matched"].([]string)
 	s := m[1]
@@ -1207,7 +1280,7 @@ func secretText(g *game, s secret) string {
 		if len(s.Teammates) > 0 {
 			teammates = targetList(g, s.Teammates)
 		}
-		text += "\n你的狼人队友（昵称：QQ）：\n" + teammates + "\n夜晚狼人可以互相私聊讨论；机器人会按顺序私聊每名狼人刀人。"
+		text += "\n你的狼人队友（昵称：QQ）：\n" + teammates + "\n夜晚可私聊发送“狼队广播 内容”与存活狼队友讨论；机器人会按顺序私聊每名狼人刀人。"
 	} else if s.Role == roleSeer {
 		text += "\n每夜可查验一名存活玩家是否为狼人。"
 	} else if s.Role == roleWitch {
