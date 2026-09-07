@@ -343,6 +343,11 @@ func handleVote(ctx *zero.Ctx) {
 		ctx.SendChain(message.Text("平票：", strings.Join(ties, "、"), "。请所有存活玩家重投，且只能投给以上候选人或弃票。"))
 		return
 	}
+	if r.TieLimitReached {
+		ctx.SendChain(message.Text("连续两轮平票，本轮无人被放逐。天黑请闭眼，狼人请查看私聊。"))
+		promptWolves(ctx, ctx.Event.GroupID, room)
+		return
+	}
 	if r.NoElimination {
 		ctx.SendChain(message.Text("所有玩家均已弃票，本轮无人被放逐。天黑请闭眼，狼人请查看私聊。"))
 		promptWolves(ctx, ctx.Event.GroupID, room)
@@ -642,16 +647,34 @@ func handleDayLastWords(ctx *zero.Ctx) {
 
 func promptWolves(ctx *zero.Ctx, gid int64, expected *game) {
 	var wolf int64
+	var roundPlayers string
 	_ = rooms.withRoom(gid, func(g *game) error {
 		if g != expected || g.Phase != phaseNightWolf {
 			return errors.New("阶段已变化")
 		}
 		wolf = g.currentWolf()
+		roundPlayers = formatRoundPlayers(g)
 		return nil
 	})
+	if roundPlayers != "" {
+		ctx.SendGroupMessage(gid, message.Text(roundPlayers))
+	}
 	if wolf != 0 {
 		promptWolf(ctx, gid, expected, wolf, 0, 0)
 	}
+}
+
+func formatRoundPlayers(g *game) string {
+	dead := make([]int64, 0, len(g.JoinOrder))
+	alive := make([]int64, 0, len(g.JoinOrder))
+	for _, id := range g.JoinOrder {
+		if g.Players[id].Alive {
+			alive = append(alive, id)
+		} else {
+			dead = append(dead, id)
+		}
+	}
+	return fmt.Sprintf("第%d轮开始\n已死亡玩家：%s\n现存活玩家：%s", g.Round, names(g, dead), names(g, alive))
 }
 
 func promptWolf(ctx *zero.Ctx, gid int64, expected *game, wolf, previousWolf, previousTarget int64) {
@@ -803,7 +826,7 @@ func promptSpecial(ctx *zero.Ctx, gid int64, expected *game, victim int64) {
 		if round > 1 {
 			selfSaveTip = "首夜已过，不能自救。"
 		}
-		ctx.SendPrivateMessage(witch, message.Text("【狼人杀】第", round, "夜\n", tip, "\n请发送：女巫行动 救 / 女巫行动 毒 QQ号 / 女巫行动 跳过\n", selfSaveTip, "\n解药可用：", antidoteAvailable, "，毒药可用：", poisonAvailable, "\n毒药可选目标：\n", witchTargets))
+		ctx.SendPrivateMessage(witch, message.Text("【狼人杀】第", round, "夜\n", tip, "\n请发送：女巫行动 救 / 女巫行动 毒 QQ号 / 女巫行动 跳过\n每夜只能行动一次，救人和毒人只能选择一个。\n", selfSaveTip, "\n解药可用：", antidoteAvailable, "，毒药可用：", poisonAvailable, "\n毒药可选目标：\n", witchTargets))
 	}
 	time.AfterFunc(nightTimeout, func() {
 		var r nightResult

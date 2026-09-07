@@ -159,6 +159,7 @@ type inspectResult struct {
 type voteResult struct {
 	Complete, Changed   bool
 	NoElimination       bool
+	TieLimitReached     bool
 	AwaitingLastWords   bool
 	Cast, Needed        int
 	Voted, Pending, Tie []int64
@@ -531,7 +532,7 @@ func (g *game) witchAct(actor int64, action string, target int64) (nightResult, 
 		return nightResult{}, errors.New("你不是女巫")
 	}
 	if g.WitchActed {
-		return nightResult{}, errors.New("你本夜已经行动过了")
+		return nightResult{}, errors.New("女巫每夜只能行动一次，救人和毒人只能选择一个")
 	}
 	switch action {
 	case "救":
@@ -904,6 +905,18 @@ func (g *game) vote(actor, target int64) (voteResult, error) {
 		}
 	}
 	if len(r.Tie) > 1 {
+		// VoteTargets 非空表示本轮已经是第一次平票后的重投。
+		// 重投仍然平票时不再继续投票，本日无人放逐并直接进入下一夜。
+		if len(g.VoteTargets) > 0 {
+			r.Complete = true
+			r.NoElimination = true
+			r.TieLimitReached = true
+			r.Tie = nil
+			g.archiveCurrentSpeeches()
+			g.Round++
+			g.startNight()
+			return r, nil
+		}
 		g.Votes = make(map[int64]int64)
 		g.VoteTargets = make(map[int64]struct{}, len(r.Tie))
 		g.VoteSummarySent = false

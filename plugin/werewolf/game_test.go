@@ -40,6 +40,29 @@ func TestRoleCounts(t *testing.T) {
 	}
 }
 
+func TestFormatRoundPlayers(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	g.Round = 3
+	g.Players[2].Alive = false
+	g.Players[5].Alive = false
+
+	got := formatRoundPlayers(g)
+	want := "第3轮开始\n已死亡玩家：玩家2、玩家5\n现存活玩家：玩家1、玩家3、玩家4、玩家6"
+	if got != want {
+		t.Fatalf("round players = %q, want %q", got, want)
+	}
+}
+
+func TestFormatRoundPlayersShowsNoDeathsAtFirstRound(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+
+	got := formatRoundPlayers(g)
+	want := "第1轮开始\n已死亡玩家：暂无\n现存活玩家：玩家1、玩家2、玩家3、玩家4、玩家5、玩家6"
+	if got != want {
+		t.Fatalf("round players = %q, want %q", got, want)
+	}
+}
+
 func TestBeginCreatesConfiguredRoles(t *testing.T) {
 	for n := minPlayers; n <= maxPlayers; n++ {
 		g := newGame(1, "玩家1")
@@ -116,6 +139,42 @@ func TestWitchPotionsAreSingleUse(t *testing.T) {
 	}
 }
 
+func TestWitchCanOnlyChooseHealOrPoisonEachNight(t *testing.T) {
+	newSpecialPhaseGame := func(t *testing.T) *game {
+		t.Helper()
+		g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager, roleVillager)
+		_, _ = g.wolfVote(1, 5)
+		_, _ = g.wolfVote(2, 5)
+		return g
+	}
+
+	t.Run("cannot poison after healing", func(t *testing.T) {
+		g := newSpecialPhaseGame(t)
+		if _, err := g.witchAct(4, "救", 0); err != nil {
+			t.Fatalf("heal rejected: %v", err)
+		}
+		if _, err := g.witchAct(4, "毒", 6); err == nil {
+			t.Fatal("poison was accepted after healing in the same night")
+		}
+		if !g.AntidoteUsed || g.PoisonUsed || g.WitchPoison != 0 {
+			t.Fatalf("unexpected witch state: antidote=%v poison=%v target=%d", g.AntidoteUsed, g.PoisonUsed, g.WitchPoison)
+		}
+	})
+
+	t.Run("cannot heal after poisoning", func(t *testing.T) {
+		g := newSpecialPhaseGame(t)
+		if _, err := g.witchAct(4, "毒", 6); err != nil {
+			t.Fatalf("poison rejected: %v", err)
+		}
+		if _, err := g.witchAct(4, "救", 0); err == nil {
+			t.Fatal("heal was accepted after poisoning in the same night")
+		}
+		if g.AntidoteUsed || !g.PoisonUsed || g.WitchHeal != 0 {
+			t.Fatalf("unexpected witch state: antidote=%v poison=%v target=%d", g.AntidoteUsed, g.PoisonUsed, g.WitchHeal)
+		}
+	})
+}
+
 func TestTieRevote(t *testing.T) {
 	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager, roleVillager, roleHunter)
 	g.startDay(nil)
@@ -142,6 +201,44 @@ func TestTieRevote(t *testing.T) {
 	}
 	if _, err := g.vote(1, 0); err != nil {
 		t.Fatalf("abstention during revote was rejected: %v", err)
+	}
+}
+
+func TestSecondConsecutiveTieStartsNextNight(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager, roleVillager, roleHunter)
+	g.startDay(nil)
+	for g.Phase == phaseDay {
+		if _, _, err := g.speak(g.currentSpeaker(), "测试发言"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tiedVotes := [][2]int64{{1, 3}, {2, 4}, {3, 4}, {4, 3}, {5, 3}, {6, 4}, {7, 3}, {8, 4}}
+	var result voteResult
+	for round := 0; round < 2; round++ {
+		for _, vote := range tiedVotes {
+			var err error
+			result, err = g.vote(vote[0], vote[1])
+			if err != nil {
+				t.Fatalf("tie round %d: %v", round+1, err)
+			}
+		}
+		if round == 0 && (len(result.Tie) != 2 || g.Phase != phaseVoting) {
+			t.Fatalf("first tie did not start a revote: result=%+v phase=%v", result, g.Phase)
+		}
+	}
+
+	if !result.Complete || !result.NoElimination || !result.TieLimitReached || result.Eliminated != 0 {
+		t.Fatalf("second tie result=%+v", result)
+	}
+	if g.Phase != phaseNightWolf || g.Round != 2 {
+		t.Fatalf("phase=%v round=%d, want next night", g.Phase, g.Round)
+	}
+	if len(g.aliveIDs()) != 8 {
+		t.Fatalf("alive players=%v, want nobody eliminated", g.aliveIDs())
+	}
+	if len(g.SpeechHistory) != 1 || g.SpeechHistory[0].Round != 1 {
+		t.Fatalf("speech history=%+v, want archived day 1", g.SpeechHistory)
 	}
 }
 
