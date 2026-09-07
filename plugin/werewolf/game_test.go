@@ -201,6 +201,13 @@ func TestVoteArchivesEverySpeechForLaterDays(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if g.Phase != phaseDayLastWords {
+		t.Fatalf("phase=%v, want daytime last words", g.Phase)
+	}
+	lastWords, err := g.submitDayLastWords(8, "请复盘票型")
+	if err != nil || !lastWords.StartNight || lastWords.LastWords[8] != "请复盘票型" {
+		t.Fatalf("last words result=%+v err=%v", lastWords, err)
+	}
 	if g.Phase != phaseNightWolf || g.Round != 2 {
 		t.Fatalf("phase=%v round=%d, want next night", g.Phase, g.Round)
 	}
@@ -246,6 +253,9 @@ func TestSkippedDayArchivesOnlySubmittedSpeeches(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if _, err := g.submitDayLastWords(8, "放弃"); err != nil {
+		t.Fatal(err)
+	}
 	archives := g.speechArchives(false)
 	if len(archives) != 1 || !slices.Equal(archives[0].Speeches, want) {
 		t.Fatalf("archives=%+v, want only submitted speeches=%+v", archives, want)
@@ -272,6 +282,30 @@ func TestNightHunterResolutionCarriesSpeechArchivesIntoDay(t *testing.T) {
 	}
 }
 
+func TestNightHunterShotTargetGetsGroupLastWordsBeforeDay(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleHunter, roleVillager, roleVillager, roleVillager)
+	g.Players[5].Alive = false
+	g.Phase = phaseHunter
+	g.PendingHunter = 5
+	g.HunterFromNight = true
+	g.HunterDeaths = []death{{ID: 5, Role: roleHunter, Cause: "狼人袭击"}}
+
+	hunter, err := g.hunterShoot(5, 8)
+	if err != nil || !hunter.AwaitingLastWords || hunter.Shot != 8 || g.Phase != phaseDayLastWords {
+		t.Fatalf("hunter result=%+v phase=%v err=%v", hunter, g.Phase, err)
+	}
+	if len(g.DayDeaths) != 1 || g.DayDeaths[0].ID != 8 {
+		t.Fatalf("eligible daytime deaths=%+v, want only shot target", g.DayDeaths)
+	}
+	if _, err := g.submitDayLastWords(5, "重复遗言"); err == nil {
+		t.Fatal("night-dead hunter was allowed a second, group last words message")
+	}
+	result, err := g.submitDayLastWords(8, "我是被猎人带走的")
+	if err != nil || result.FirstSpeaker == 0 || g.Phase != phaseDay || result.LastWords[8] != "我是被猎人带走的" {
+		t.Fatalf("last words result=%+v phase=%v err=%v", result, g.Phase, err)
+	}
+}
+
 func TestHunterMayShootBeforeParityVictory(t *testing.T) {
 	g := gameWithRoles(t, roleWolf, roleHunter, roleVillager, roleVillager)
 	g.Phase, g.Votes = phaseVoting, map[int64]int64{}
@@ -288,8 +322,14 @@ func TestHunterMayShootBeforeParityVictory(t *testing.T) {
 		t.Fatalf("vote result=%+v phase=%v", result, g.Phase)
 	}
 	hunter, err := g.hunterShoot(2, 1)
-	if err != nil || hunter.Winner != "好人" {
+	if err != nil || !hunter.AwaitingLastWords || hunter.Winner != "" {
 		t.Fatalf("hunter result=%+v err=%v", hunter, err)
+	}
+	if result, err := g.submitDayLastWords(2, "带走狼人"); err != nil || !result.AwaitingLastWords {
+		t.Fatalf("hunter last words result=%+v err=%v", result, err)
+	}
+	if result, err := g.submitDayLastWords(1, "放弃"); err != nil || result.Winner != "好人" || result.LastWords[2] != "带走狼人" {
+		t.Fatalf("shot player's last words result=%+v err=%v", result, err)
 	}
 }
 
@@ -336,8 +376,41 @@ func TestWolfCanSelfKillOrChooseNoKill(t *testing.T) {
 		t.Fatalf("self kill rejected: %v", err)
 	}
 	result, err := g.wolfVote(2, 0)
-	if err != nil || result.Victim != 1 {
+	if err != nil || !result.Deciding || result.Ready || result.NextWolf != 1 {
 		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	result, err = g.wolfVote(1, 1)
+	if err != nil || !result.Ready || result.Victim != 1 {
+		t.Fatalf("decision=%+v err=%v", result, err)
+	}
+}
+
+func TestWolfCanTargetTeammate(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	if _, err := g.wolfVote(1, 2); err != nil {
+		t.Fatalf("targeting wolf teammate was rejected: %v", err)
+	}
+	result, err := g.wolfVote(2, 2)
+	if err != nil || !result.Ready || result.Victim != 2 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestTwoDifferentWolfVotesReturnToFirstWolf(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	if _, err := g.wolfVote(1, 5); err != nil {
+		t.Fatal(err)
+	}
+	result, err := g.wolfVote(2, 6)
+	if err != nil || !result.Deciding || result.Ready || result.NextWolf != 1 || g.currentWolf() != 1 || g.Phase != phaseNightWolf {
+		t.Fatalf("result=%+v current=%d phase=%v err=%v", result, g.currentWolf(), g.Phase, err)
+	}
+	if _, err := g.wolfVote(1, 3); err == nil {
+		t.Fatal("first wolf was allowed to choose outside the two original results")
+	}
+	result, err = g.wolfVote(1, 6)
+	if err != nil || !result.Ready || result.Victim != 6 || g.Phase != phaseNightSpecial {
+		t.Fatalf("decision=%+v phase=%v err=%v", result, g.Phase, err)
 	}
 }
 
@@ -380,11 +453,14 @@ func TestWolfExplosionEndsDayAndStartsNextNight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Winner != "" || g.Players[1].Alive || g.Phase != phaseNightWolf || g.Round != 2 {
+	if !result.AwaitingLastWords || result.Winner != "" || g.Players[1].Alive || g.Phase != phaseDayLastWords || g.Round != 1 {
 		t.Fatalf("result=%+v phase=%v round=%d alive=%v", result, g.Phase, g.Round, g.Players[1].Alive)
 	}
-	if len(g.Speeches) != 0 || len(g.DayOrder) != 0 {
-		t.Fatalf("day state was retained: speeches=%v order=%v", g.Speeches, g.DayOrder)
+	if _, err := g.submitDayLastWords(1, "我自爆了"); err != nil {
+		t.Fatal(err)
+	}
+	if g.Phase != phaseNightWolf || g.Round != 2 || len(g.Speeches) != 0 || len(g.DayOrder) != 0 {
+		t.Fatalf("day did not advance cleanly: phase=%v round=%d speeches=%v order=%v", g.Phase, g.Round, g.Speeches, g.DayOrder)
 	}
 }
 
@@ -396,6 +472,12 @@ func TestWolfExplosionDiscardsVoting(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := g.explode(2); err != nil {
+		t.Fatal(err)
+	}
+	if g.Phase != phaseDayLastWords {
+		t.Fatalf("phase=%v, want daytime last words", g.Phase)
+	}
+	if _, err := g.submitDayLastWords(2, "放弃"); err != nil {
 		t.Fatal(err)
 	}
 	if g.Phase != phaseNightWolf || len(g.Votes) != 0 || len(g.VoteTargets) != 0 {
@@ -410,8 +492,12 @@ func TestLastWolfExplosionEndsGame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Winner != "好人" || g.Phase != phaseFinished || len(result.Reveal.Roles) != len(g.Players) {
+	if !result.AwaitingLastWords || result.Winner != "" || g.Phase != phaseDayLastWords {
 		t.Fatalf("result=%+v phase=%v", result, g.Phase)
+	}
+	lastWords, err := g.submitDayLastWords(1, "我是最后一匹狼")
+	if err != nil || lastWords.Winner != "好人" || g.Phase != phaseFinished || len(lastWords.Reveal.Roles) != len(g.Players) {
+		t.Fatalf("last words result=%+v phase=%v err=%v", lastWords, g.Phase, err)
 	}
 }
 
