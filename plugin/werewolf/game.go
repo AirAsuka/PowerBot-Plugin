@@ -114,8 +114,10 @@ type death struct {
 }
 type reveal struct{ Roles map[int64]role }
 type speech struct {
-	PlayerID         int64
-	PlayerName, Text string
+	PlayerID        int64
+	SourceMessageID int64
+	PlayerName      string
+	Text            string
 }
 
 // speechArchive 保存一整天的有效发言。历史记录保留到本局结束，
@@ -627,7 +629,7 @@ func (g *game) startDay(deaths []death) {
 	g.touch()
 }
 
-func (g *game) speak(actor int64, text string) (int64, bool, error) {
+func (g *game) speak(actor int64, text string, sourceMessageID ...int64) (int64, bool, error) {
 	if g.Phase != phaseDay {
 		return 0, false, errors.New("现在不是白天发言阶段")
 	}
@@ -648,7 +650,16 @@ func (g *game) speak(actor int64, text string) (int64, bool, error) {
 	if utf8.RuneCountInString(text) > maxSpeechRunes {
 		return actor, false, fmt.Errorf("发言不能超过%d个字", maxSpeechRunes)
 	}
-	g.Speeches = append(g.Speeches, speech{PlayerID: actor, PlayerName: p.Name, Text: text})
+	var messageID int64
+	if len(sourceMessageID) > 0 && sourceMessageID[0] > 0 {
+		messageID = sourceMessageID[0]
+	}
+	g.Speeches = append(g.Speeches, speech{
+		PlayerID:        actor,
+		SourceMessageID: messageID,
+		PlayerName:      p.Name,
+		Text:            text,
+	})
 	g.DayTurn++
 	g.touch()
 	if g.DayTurn == len(g.DayOrder) {
