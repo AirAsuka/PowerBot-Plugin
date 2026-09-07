@@ -203,13 +203,15 @@ type game struct {
 	Phase     phase
 	Round     int
 
-	WolfVotes                map[int64]int64
-	WolfOrder                []int64
-	WolfTurn                 int
-	WolfDeciding             bool
-	WolfVictim               int64
-	SeerActed, WitchActed    bool
-	WitchHeal, WitchPoison   int64
+	WolfVotes              map[int64]int64
+	WolfOrder              []int64
+	WolfTurn               int
+	WolfDeciding           bool
+	WolfVictim             int64
+	SeerActed, WitchActed  bool
+	WitchHeal, WitchPoison int64
+	// AntidoteUsed 和 PoisonUsed 是整局状态，只在新一局开始时重置。
+	// startNight 只重置当夜的 WitchActed/WitchHeal/WitchPoison。
 	AntidoteUsed, PoisonUsed bool
 
 	DayOrder        []int64
@@ -537,7 +539,7 @@ func (g *game) witchAct(actor int64, action string, target int64) (nightResult, 
 	switch action {
 	case "救":
 		if g.AntidoteUsed {
-			return nightResult{}, errors.New("解药已经用过了")
+			return nightResult{}, errors.New("本局解药已经用过了")
 		}
 		if g.WolfVictim == 0 {
 			return nightResult{}, errors.New("本夜没有狼人击杀目标")
@@ -549,7 +551,7 @@ func (g *game) witchAct(actor int64, action string, target int64) (nightResult, 
 		g.AntidoteUsed = true
 	case "毒":
 		if g.PoisonUsed {
-			return nightResult{}, errors.New("毒药已经用过了")
+			return nightResult{}, errors.New("本局毒药已经用过了")
 		}
 		t := g.Players[target]
 		if t == nil || !t.Alive {

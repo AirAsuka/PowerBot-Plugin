@@ -826,7 +826,7 @@ func promptSpecial(ctx *zero.Ctx, gid int64, expected *game, victim int64) {
 		if round > 1 {
 			selfSaveTip = "首夜已过，不能自救。"
 		}
-		ctx.SendPrivateMessage(witch, message.Text("【狼人杀】第", round, "夜\n", tip, "\n请发送：女巫行动 救 / 女巫行动 毒 QQ号 / 女巫行动 跳过\n每夜只能行动一次，救人和毒人只能选择一个。\n", selfSaveTip, "\n解药可用：", antidoteAvailable, "，毒药可用：", poisonAvailable, "\n毒药可选目标：\n", witchTargets))
+		ctx.SendPrivateMessage(witch, message.Text("【狼人杀】第", round, "夜\n", tip, "\n请发送：女巫行动 救 / 女巫行动 毒 QQ号 / 女巫行动 跳过\n解药和毒药每局各限用一次；每夜只能行动一次，救人和毒人只能选择一个。\n", selfSaveTip, "\n解药可用：", antidoteAvailable, "，毒药可用：", poisonAvailable, "\n毒药可选目标：\n", witchTargets))
 	}
 	time.AfterFunc(nightTimeout, func() {
 		var r nightResult

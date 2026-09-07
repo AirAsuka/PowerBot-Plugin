@@ -137,6 +137,16 @@ func TestWitchPotionsAreSingleUse(t *testing.T) {
 	if err != nil || len(outcome.Deaths) != 2 || !g.PoisonUsed {
 		t.Fatalf("poison outcome=%+v err=%v", outcome, err)
 	}
+	g.Round++
+	g.startNight()
+	_, _ = g.wolfVote(2, 7)
+	_, _ = g.inspect(3, 2)
+	if _, err := g.witchAct(4, "毒", 5); err == nil {
+		t.Fatal("second poison was accepted")
+	}
+	if !g.AntidoteUsed || !g.PoisonUsed {
+		t.Fatalf("potion usage was reset between nights: antidote=%v poison=%v", g.AntidoteUsed, g.PoisonUsed)
+	}
 }
 
 func TestWitchCanOnlyChooseHealOrPoisonEachNight(t *testing.T) {
