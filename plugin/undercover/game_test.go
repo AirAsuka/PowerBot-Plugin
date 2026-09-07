@@ -239,6 +239,59 @@ func TestVoteResultTracksVotedAndPendingPlayers(t *testing.T) {
 	}
 }
 
+func TestAllPlayersMayAbstain(t *testing.T) {
+	g := makeStartedGame(t, 4)
+	finishDescriptions(t, g)
+
+	first := g.Order[0]
+	initialTarget := g.Order[1]
+	if _, err := g.vote(first, initialTarget); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := g.vote(first, 0)
+	if err != nil || !changed.Changed || g.Votes[first] != 0 {
+		t.Fatalf("changed=%+v votes=%v err=%v", changed, g.Votes, err)
+	}
+
+	var result voteResult
+	for _, voter := range g.Order[1:] {
+		result, err = g.vote(voter, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !result.Complete || !result.NoElimination || result.Eliminated.ID != 0 {
+		t.Fatalf("result=%+v", result)
+	}
+	if g.Phase != phaseNight {
+		t.Fatalf("phase=%v, want phaseNight", g.Phase)
+	}
+}
+
+func TestAbstentionsDoNotCountAsCandidateVotes(t *testing.T) {
+	g := makeStartedGame(t, 4)
+	finishDescriptions(t, g)
+	target := g.Order[0]
+	candidateVoteCast := false
+
+	var result voteResult
+	for _, voter := range g.Order {
+		choice := int64(0)
+		if voter != target && !candidateVoteCast {
+			choice = target
+			candidateVoteCast = true
+		}
+		var err error
+		result, err = g.vote(voter, choice)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if result.NoElimination || result.Eliminated.ID != target {
+		t.Fatalf("result=%+v, want player %d eliminated", result, target)
+	}
+}
+
 func TestNextRoundKeepsAllArchivedCluesAndClearsCurrentRound(t *testing.T) {
 	g := makeStartedGame(t, 5)
 	finishDescriptions(t, g)
@@ -561,6 +614,7 @@ func TestVotePattern(t *testing.T) {
 		{"卧底投票 [CQ:at,qq=123456]", 123456},
 		{"卧底投票[CQ:at,name=某人,qq=42]", 42},
 		{"卧底投票 98765", 98765},
+		{"卧底投票 弃票", 0},
 	}
 	for _, tt := range tests {
 		matches := re.FindStringSubmatch(tt.message)

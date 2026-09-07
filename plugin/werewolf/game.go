@@ -152,6 +152,7 @@ type inspectResult struct {
 
 type voteResult struct {
 	Complete, Changed   bool
+	NoElimination       bool
 	Cast, Needed        int
 	Voted, Pending, Tie []int64
 	Eliminated          int64
@@ -716,16 +717,18 @@ func (g *game) vote(actor, target int64) (voteResult, error) {
 	if !p.Alive {
 		return r, errPlayerDead
 	}
-	if actor == target {
-		return r, errors.New("不能投票给自己")
-	}
-	t := g.Players[target]
-	if t == nil || !t.Alive {
-		return r, errInvalidTarget
-	}
-	if len(g.VoteTargets) > 0 {
-		if _, ok := g.VoteTargets[target]; !ok {
-			return r, errors.New("平票重投只能选择候选玩家")
+	if target != 0 {
+		if actor == target {
+			return r, errors.New("不能投票给自己")
+		}
+		t := g.Players[target]
+		if t == nil || !t.Alive {
+			return r, errInvalidTarget
+		}
+		if len(g.VoteTargets) > 0 {
+			if _, ok := g.VoteTargets[target]; !ok {
+				return r, errors.New("平票重投只能选择候选玩家或弃票")
+			}
 		}
 	}
 	_, r.Changed = g.Votes[actor]
@@ -739,10 +742,21 @@ func (g *game) vote(actor, target int64) (voteResult, error) {
 	counts := map[int64]int{}
 	max := 0
 	for _, id := range g.Votes {
+		if id == 0 {
+			continue
+		}
 		counts[id]++
 		if counts[id] > max {
 			max = counts[id]
 		}
+	}
+	if max == 0 {
+		r.Complete = true
+		r.NoElimination = true
+		g.archiveCurrentSpeeches()
+		g.Round++
+		g.startNight()
+		return r, nil
 	}
 	for _, id := range alive {
 		if counts[id] == max {

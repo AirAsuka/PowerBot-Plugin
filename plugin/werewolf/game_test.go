@@ -2,6 +2,7 @@ package werewolf
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"testing"
 )
@@ -137,6 +138,40 @@ func TestTieRevote(t *testing.T) {
 	}
 	if _, err := g.vote(1, 5); err == nil {
 		t.Fatal("vote outside tied candidates was accepted")
+	}
+	if _, err := g.vote(1, 0); err != nil {
+		t.Fatalf("abstention during revote was rejected: %v", err)
+	}
+}
+
+func TestAllPlayersMayAbstainFromExileVote(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
+	g.startDay(nil)
+	g.beginVoting()
+
+	var result voteResult
+	var err error
+	for _, voter := range g.aliveIDs() {
+		result, err = g.vote(voter, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !result.Complete || !result.NoElimination || result.Eliminated != 0 {
+		t.Fatalf("result=%+v", result)
+	}
+	if g.Phase != phaseNightWolf || g.Round != 2 {
+		t.Fatalf("phase=%v round=%d, want next night", g.Phase, g.Round)
+	}
+}
+
+func TestWerewolfVotePatternAcceptsAbstention(t *testing.T) {
+	re := regexp.MustCompile(votePattern)
+	for _, input := range []string{"狼人杀投票 弃票", "狼人杀投票弃票"} {
+		matches := re.FindStringSubmatch(input)
+		if len(matches) != 3 || matches[1] != "" || matches[2] != "" {
+			t.Errorf("vote pattern did not recognize abstention %q: %v", input, matches)
+		}
 	}
 }
 

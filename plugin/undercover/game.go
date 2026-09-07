@@ -137,17 +137,18 @@ type gameReveal struct {
 }
 
 type voteResult struct {
-	Complete    bool
-	Changed     bool
-	VotesCast   int
-	VotesNeeded int
-	Voted       []int64
-	Pending     []int64
-	Tie         []int64
-	Eliminated  elimination
-	Winner      string
-	NightActors []int64
-	Reveal      gameReveal
+	Complete      bool
+	Changed       bool
+	NoElimination bool
+	VotesCast     int
+	VotesNeeded   int
+	Voted         []int64
+	Pending       []int64
+	Tie           []int64
+	Eliminated    elimination
+	Winner        string
+	NightActors   []int64
+	Reveal        gameReveal
 }
 
 type nightResult struct {
@@ -414,16 +415,18 @@ func (g *game) vote(voter, target int64) (voteResult, error) {
 	if !voterPlayer.Alive {
 		return result, errPlayerOut
 	}
-	if voter == target {
-		return result, errSelfVote
-	}
-	targetPlayer, ok := g.Players[target]
-	if !ok || !targetPlayer.Alive {
-		return result, errInvalidTarget
-	}
-	if len(g.VoteTargets) > 0 {
-		if _, ok := g.VoteTargets[target]; !ok {
-			return result, errors.New("平票重投时只能投给候选玩家")
+	if target != 0 {
+		if voter == target {
+			return result, errSelfVote
+		}
+		targetPlayer, ok := g.Players[target]
+		if !ok || !targetPlayer.Alive {
+			return result, errInvalidTarget
+		}
+		if len(g.VoteTargets) > 0 {
+			if _, ok := g.VoteTargets[target]; !ok {
+				return result, errors.New("平票重投时只能投给候选玩家或弃票")
+			}
 		}
 	}
 	_, result.Changed = g.Votes[voter]
@@ -438,10 +441,22 @@ func (g *game) vote(voter, target int64) (voteResult, error) {
 	counts := make(map[int64]int)
 	maxVotes := 0
 	for _, votedID := range g.Votes {
+		if votedID == 0 {
+			continue
+		}
 		counts[votedID]++
 		if counts[votedID] > maxVotes {
 			maxVotes = counts[votedID]
 		}
+	}
+	if maxVotes == 0 {
+		result.Complete = true
+		result.NoElimination = true
+		g.Phase = phaseNight
+		g.NightActions = make(map[int64]int64)
+		g.BlankActed = false
+		result.NightActors = g.nightActors()
+		return result, nil
 	}
 	for _, id := range g.Order {
 		if counts[id] == maxVotes {

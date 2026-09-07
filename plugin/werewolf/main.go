@@ -17,7 +17,7 @@ import (
 
 const (
 	nightTimeout  = 2 * time.Minute
-	votePattern   = `^狼人杀投票\s*(?:\[CQ:at,(?:[^\]]*,)?qq=(\d+)(?:,[^\]]*)?\]|(\d+))\s*$`
+	votePattern   = `^狼人杀投票\s*(?:弃票|\[CQ:at,(?:[^\]]*,)?qq=(\d+)(?:,[^\]]*)?\]|(\d+))\s*$`
 	hunterPattern = `^猎人开枪\s*(?:\[CQ:at,(?:[^\]]*,)?qq=(\d+)(?:,[^\]]*)?\]|(\d+))\s*$`
 )
 
@@ -26,7 +26,7 @@ const helpText = `狼人杀（6—12人，机器人主持）
 2. 其他玩家发送“加入狼人杀”
 3. 房主发送“开始狼人杀”，机器人私聊身份
 4. 夜晚按私聊提示行动；白天依次发送“狼人杀发言 内容”
-5. 发言结束后发送“狼人杀投票 @玩家”
+5. 发言结束后发送“狼人杀投票 @玩家”或“狼人杀投票 弃票”
 
 其他指令：狼人杀玩家、狼人杀状态、退出狼人杀、结束狼人杀
 房主可发送“狼人杀开始投票”跳过剩余发言。
@@ -206,7 +206,7 @@ func handleSpeech(ctx *zero.Ctx) {
 	}
 	if voting {
 		sendSpeechArchives(ctx, ctx.Event.GroupID, archives)
-		ctx.SendChain(message.Text("所有存活玩家发言完毕，进入放逐投票。请发送“狼人杀投票 @玩家”，可在全员投完前改票。"))
+		ctx.SendChain(message.Text("所有存活玩家发言完毕，进入放逐投票。请发送“狼人杀投票 @玩家”或“狼人杀投票 弃票”，可在全员投完前改票。"))
 		return
 	}
 	ctx.SendChain(message.Text("发言已记录，下一位请 "), message.At(next), message.Text(" 发言。"))
@@ -226,7 +226,7 @@ func skipToVote(ctx *zero.Ctx) {
 		return
 	}
 	sendSpeechArchives(ctx, ctx.Event.GroupID, archives)
-	ctx.SendChain(message.Text("已进入放逐投票，请发送“狼人杀投票 @玩家”。"))
+	ctx.SendChain(message.Text("已进入放逐投票，请发送“狼人杀投票 @玩家”或“狼人杀投票 弃票”。"))
 }
 
 func handleExplosion(ctx *zero.Ctx) {
@@ -255,10 +255,15 @@ func handleExplosion(ctx *zero.Ctx) {
 }
 
 func handleVote(ctx *zero.Ctx) {
-	target, err := matchedTarget(ctx)
-	if err != nil {
-		sendError(ctx, err)
-		return
+	matches := ctx.State["regex_matched"].([]string)
+	target := int64(0)
+	var err error
+	if matches[1] != "" || matches[2] != "" {
+		target, err = matchedTarget(ctx)
+		if err != nil {
+			sendError(ctx, err)
+			return
+		}
 	}
 	var r voteResult
 	var room *game
@@ -289,7 +294,12 @@ func handleVote(ctx *zero.Ctx) {
 	}
 	if !r.Complete {
 		word := "投票已记录"
-		if r.Changed {
+		if target == 0 {
+			word = "弃票已记录"
+		}
+		if r.Changed && target == 0 {
+			word = "已改为弃票"
+		} else if r.Changed {
 			word = "改票成功"
 		}
 		ctx.SendChain(message.Text(word, "（", r.Cast, "/", r.Needed, "）\n", progressText(room, r.Voted, r.Pending)))
@@ -297,7 +307,12 @@ func handleVote(ctx *zero.Ctx) {
 	}
 	if len(r.Tie) > 0 {
 		sendSpeechArchives(ctx, ctx.Event.GroupID, archives)
-		ctx.SendChain(message.Text("平票：", strings.Join(ties, "、"), "。请所有存活玩家重投，且只能投给以上候选人。"))
+		ctx.SendChain(message.Text("平票：", strings.Join(ties, "、"), "。请所有存活玩家重投，且只能投给以上候选人或弃票。"))
+		return
+	}
+	if r.NoElimination {
+		ctx.SendChain(message.Text("所有玩家均已弃票，本轮无人被放逐。天黑请闭眼，狼人请查看私聊。"))
+		promptWolves(ctx, ctx.Event.GroupID, room)
 		return
 	}
 	if r.Winner != "" {

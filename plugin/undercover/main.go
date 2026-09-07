@@ -18,7 +18,7 @@ const helpText = `谁是卧底（3—12人）
 2. 其他玩家发送“加入卧底”
 3. 房主发送“开始卧底”，机器人会私聊每个人的词
 4. 按提示发送“卧底描述 你的描述”
-5. 描述结束后发送“卧底投票 @玩家”
+5. 描述结束后发送“卧底投票 @玩家”或“卧底投票 弃票”
 
 其他指令：卧底玩家、卧底状态、退出卧底、结束卧底
 身份配置：5人起加入白板；8人起配置2狼并加入天使。
@@ -269,7 +269,7 @@ func handleClue(ctx *zero.Ctx) {
 	}
 	if voting {
 		sendClueArchives(ctx, ctx.Event.GroupID, archives)
-		ctx.SendChain(message.Text("本轮描述完毕，进入投票阶段。所有存活玩家请发送“卧底投票 @玩家”；可以改票，以最后一票为准。\n", voteProgress))
+		ctx.SendChain(message.Text("本轮描述完毕，进入投票阶段。所有存活玩家请发送“卧底投票 @玩家”或“卧底投票 弃票”；可以改票，以最后一票为准。\n", voteProgress))
 		return
 	}
 	ctx.SendChain(message.Text("描述已记录，下一位请 "), message.At(nextID), message.Text("（", nextName, "）描述。"))
@@ -321,7 +321,12 @@ func handleVote(ctx *zero.Ctx) {
 
 	if !result.Complete {
 		action := "投票已记录"
-		if result.Changed {
+		if target == 0 {
+			action = "弃票已记录"
+		}
+		if result.Changed && target == 0 {
+			action = "已改为弃票"
+		} else if result.Changed {
 			action = "改票成功"
 		}
 		ctx.SendChain(message.Text(action, "（", result.VotesCast, "/", result.VotesNeeded, "）\n", voteProgress))
@@ -329,7 +334,12 @@ func handleVote(ctx *zero.Ctx) {
 	}
 	if len(result.Tie) > 0 {
 		sendClueArchives(ctx, ctx.Event.GroupID, archives)
-		ctx.SendChain(message.Text("本轮平票：", strings.Join(tieNames, "、"), "。请所有存活玩家重新投票，本轮只能投给以上候选人。\n", voteProgress))
+		ctx.SendChain(message.Text("本轮平票：", strings.Join(tieNames, "、"), "。请所有存活玩家重新投票，本轮只能投给以上候选人或弃票。\n", voteProgress))
+		return
+	}
+	if result.NoElimination {
+		ctx.SendChain(message.Text("所有玩家均已弃票，本轮无人被投出。\n天黑请闭眼，机器人正在私聊本夜可行动的玩家。"))
+		startNight(ctx, ctx.Event.GroupID, room, result.NightActors)
 		return
 	}
 	if result.Winner != "" {
