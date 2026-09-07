@@ -2,6 +2,7 @@ package werewolf
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 )
 
@@ -136,6 +137,97 @@ func TestTieRevote(t *testing.T) {
 	}
 	if _, err := g.vote(1, 5); err == nil {
 		t.Fatal("vote outside tied candidates was accepted")
+	}
+}
+
+func TestVoteArchivesEverySpeechForLaterDays(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleHunter, roleVillager, roleVillager, roleVillager)
+	g.startDay(nil)
+	for g.Phase == phaseDay {
+		speaker := g.currentSpeaker()
+		if _, _, err := g.speak(speaker, fmt.Sprintf("玩家%d的发言", speaker)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := append([]speech(nil), g.Speeches...)
+
+	for _, voter := range g.aliveIDs() {
+		target := int64(8)
+		if voter == target {
+			target = 7
+		}
+		if _, err := g.vote(voter, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if g.Phase != phaseNightWolf || g.Round != 2 {
+		t.Fatalf("phase=%v round=%d, want next night", g.Phase, g.Round)
+	}
+	archives := g.speechArchives(false)
+	if len(archives) != 1 || archives[0].Round != 1 || !slices.Equal(archives[0].Speeches, want) {
+		t.Fatalf("archives=%+v, want day-1 speeches=%+v", archives, want)
+	}
+	archives[0].Speeches[0].Text = "被外部修改"
+	if g.SpeechHistory[0].Speeches[0].Text == "被外部修改" {
+		t.Fatal("speechArchives returned game-owned storage")
+	}
+
+	g.Phase = phaseNightSpecial
+	result := g.finalizeNight()
+	if result.FirstSpeaker == 0 || len(result.Archives) != 1 || result.Archives[0].Round != 1 {
+		t.Fatalf("next-day result=%+v, want archived day-1 speeches", result)
+	}
+}
+
+func TestSkippedDayArchivesOnlySubmittedSpeeches(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleHunter, roleVillager, roleVillager, roleVillager)
+	g.startDay(nil)
+	for range 2 {
+		if _, _, err := g.speak(g.currentSpeaker(), "提前投票前的发言"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := append([]speech(nil), g.Speeches...)
+	if err := g.skipToVote(g.HostID); err != nil {
+		t.Fatal(err)
+	}
+	current := g.speechArchives(true)
+	if len(current) != 1 || !slices.Equal(current[0].Speeches, want) {
+		t.Fatalf("vote preview=%+v, want submitted speeches=%+v", current, want)
+	}
+
+	for _, voter := range g.aliveIDs() {
+		target := int64(8)
+		if voter == target {
+			target = 7
+		}
+		if _, err := g.vote(voter, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	archives := g.speechArchives(false)
+	if len(archives) != 1 || !slices.Equal(archives[0].Speeches, want) {
+		t.Fatalf("archives=%+v, want only submitted speeches=%+v", archives, want)
+	}
+}
+
+func TestNightHunterResolutionCarriesSpeechArchivesIntoDay(t *testing.T) {
+	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleHunter, roleVillager, roleVillager, roleVillager)
+	want := []speech{{PlayerID: 1, PlayerName: "玩家1", Text: "第一天发言"}}
+	g.SpeechHistory = []speechArchive{{Round: 1, Speeches: append([]speech(nil), want...)}}
+	g.Round = 2
+	g.Players[5].Alive = false
+	g.Phase = phaseHunter
+	g.PendingHunter = 5
+	g.HunterFromNight = true
+	g.HunterDeaths = []death{{ID: 5, Role: roleHunter, Cause: "狼人袭击"}}
+
+	result, err := g.hunterShoot(5, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.FirstSpeaker == 0 || len(result.Archives) != 1 || !slices.Equal(result.Archives[0].Speeches, want) {
+		t.Fatalf("hunter result=%+v, want archived day-1 speeches", result)
 	}
 }
 

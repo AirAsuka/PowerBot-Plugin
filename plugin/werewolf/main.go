@@ -187,7 +187,15 @@ func handleSpeech(ctx *zero.Ctx) {
 	text := ctx.State["regex_matched"].([]string)[1]
 	var next int64
 	var voting bool
-	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error { var e error; next, voting, e = g.speak(ctx.Event.UserID, text); return e })
+	var archives []speechArchive
+	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+		var e error
+		next, voting, e = g.speak(ctx.Event.UserID, text)
+		if e == nil && voting {
+			archives = g.speechArchives(true)
+		}
+		return e
+	})
 	if err != nil {
 		if errors.Is(err, errNotYourTurn) && next != 0 {
 			ctx.SendChain(message.Text("还没轮到你，请等待 "), message.At(next), message.Text(" 发言。"))
@@ -197,6 +205,7 @@ func handleSpeech(ctx *zero.Ctx) {
 		return
 	}
 	if voting {
+		sendSpeechArchives(ctx, ctx.Event.GroupID, archives)
 		ctx.SendChain(message.Text("所有存活玩家发言完毕，进入放逐投票。请发送“狼人杀投票 @玩家”，可在全员投完前改票。"))
 		return
 	}
@@ -204,11 +213,19 @@ func handleSpeech(ctx *zero.Ctx) {
 }
 
 func skipToVote(ctx *zero.Ctx) {
-	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error { return g.skipToVote(ctx.Event.UserID) })
+	var archives []speechArchive
+	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+		if err := g.skipToVote(ctx.Event.UserID); err != nil {
+			return err
+		}
+		archives = g.speechArchives(true)
+		return nil
+	})
 	if err != nil {
 		sendError(ctx, err)
 		return
 	}
+	sendSpeechArchives(ctx, ctx.Event.GroupID, archives)
 	ctx.SendChain(message.Text("已进入放逐投票，请发送“狼人杀投票 @玩家”。"))
 }
 
@@ -247,6 +264,7 @@ func handleVote(ctx *zero.Ctx) {
 	var room *game
 	var eliminated string
 	var ties []string
+	var archives []speechArchive
 	err = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
 		room = g
 		var e error
@@ -259,6 +277,9 @@ func handleVote(ctx *zero.Ctx) {
 		}
 		for _, id := range r.Tie {
 			ties = append(ties, g.Players[id].Name)
+		}
+		if len(r.Tie) > 0 {
+			archives = g.speechArchives(true)
 		}
 		return nil
 	})
@@ -275,6 +296,7 @@ func handleVote(ctx *zero.Ctx) {
 		return
 	}
 	if len(r.Tie) > 0 {
+		sendSpeechArchives(ctx, ctx.Event.GroupID, archives)
 		ctx.SendChain(message.Text("平票：", strings.Join(ties, "、"), "。请所有存活玩家重投，且只能投给以上候选人。"))
 		return
 	}
@@ -330,6 +352,7 @@ func resolveHunter(ctx *zero.Ctx, target int64) {
 		promptWolves(ctx, ctx.Event.GroupID, room)
 		return
 	}
+	sendSpeechArchives(ctx, ctx.Event.GroupID, r.Archives)
 	ctx.SendChain(message.Text(prefix, "\n进入白天，首先请 "), message.At(r.FirstSpeaker), message.Text(" 发言。"))
 }
 
@@ -751,6 +774,7 @@ func announceNight(ctx *zero.Ctx, gid int64, g *game, r nightResult) {
 		scheduleHunterTimeout(ctx, gid, g)
 		return
 	}
+	sendSpeechArchives(ctx, gid, r.Archives)
 	ctx.SendGroupMessage(gid, message.Message{message.Text(b.String() + "\n进入白天，首先请 "), message.At(r.FirstSpeaker), message.Text(" 发言。")})
 }
 
@@ -791,8 +815,45 @@ func scheduleHunterTimeout(ctx *zero.Ctx, gid int64, expected *game) {
 			promptWolves(ctx, gid, expected)
 			return
 		}
+		sendSpeechArchives(ctx, gid, result.Archives)
 		ctx.SendGroupMessage(gid, message.Message{message.Text(prefix + "\n进入白天，首先请 "), message.At(result.FirstSpeaker), message.Text(" 发言。")})
 	})
+}
+
+// sendSpeechArchives 按天依次把整局已有发言复刻为独立的合并转发记录。
+func sendSpeechArchives(ctx *zero.Ctx, groupID int64, archives []speechArchive) {
+	for _, archive := range archives {
+		sendSpeechArchive(ctx, groupID, archive.Round, archive.Speeches)
+	}
+}
+
+// sendSpeechArchive 优先使用原玩家昵称和 QQ 作为节点发送者；平台不允许
+// 使用玩家身份创建转发节点时，再由机器人统一标注玩家信息后重试。
+func sendSpeechArchive(ctx *zero.Ctx, groupID int64, round int, speeches []speech) {
+	if round <= 0 || len(speeches) == 0 {
+		return
+	}
+	nodes := make(message.Message, 0, len(speeches)+1)
+	nodes = append(nodes, message.CustomNode("狼人杀", ctx.Event.SelfID, fmt.Sprintf("第%d天发言记录", round)))
+	for _, item := range speeches {
+		nodes = append(nodes, message.CustomNode(item.PlayerName, item.PlayerID, item.Text))
+	}
+	if ctx.SendGroupForwardMessage(groupID, nodes).Get("message_id").Int() != 0 {
+		return
+	}
+
+	fallback := make(message.Message, 0, len(speeches)+1)
+	fallback = append(fallback, message.CustomNode("狼人杀", ctx.Event.SelfID, fmt.Sprintf("第%d天发言记录", round)))
+	for _, item := range speeches {
+		fallback = append(fallback, message.CustomNode(
+			"狼人杀",
+			ctx.Event.SelfID,
+			fmt.Sprintf("%s（%d）：%s", item.PlayerName, item.PlayerID, item.Text),
+		))
+	}
+	if ctx.SendGroupForwardMessage(groupID, fallback).Get("message_id").Int() == 0 {
+		ctx.SendGroupMessage(groupID, message.Text("第", round, "天发言记录发送失败，请稍后通过“狼人杀状态”确认游戏进度。"))
+	}
 }
 
 func finishAnnouncement(ctx *zero.Ctx, gid int64, g *game, prefix string, r reveal) {

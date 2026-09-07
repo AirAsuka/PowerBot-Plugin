@@ -118,6 +118,13 @@ type speech struct {
 	PlayerName, Text string
 }
 
+// speechArchive 保存一整天的有效发言。历史记录保留到本局结束，
+// 供后续白天开始前和投票前回放。
+type speechArchive struct {
+	Round    int
+	Speeches []speech
+}
+
 type nightResult struct {
 	Complete          bool
 	AwaitingLastWords bool
@@ -126,6 +133,7 @@ type nightResult struct {
 	Winner            string
 	NeedHunter        bool
 	FirstSpeaker      int64
+	Archives          []speechArchive
 	Reveal            reveal
 }
 
@@ -162,6 +170,7 @@ type hunterResult struct {
 	Winner       string
 	StartNight   bool
 	FirstSpeaker int64
+	Archives     []speechArchive
 	Reveal       reveal
 }
 
@@ -180,11 +189,12 @@ type game struct {
 	WitchHeal, WitchPoison   int64
 	AntidoteUsed, PoisonUsed bool
 
-	DayOrder    []int64
-	DayTurn     int
-	Speeches    []speech
-	Votes       map[int64]int64
-	VoteTargets map[int64]struct{}
+	DayOrder      []int64
+	DayTurn       int
+	Speeches      []speech
+	SpeechHistory []speechArchive
+	Votes         map[int64]int64
+	VoteTargets   map[int64]struct{}
 
 	PendingHunter   int64
 	HunterFromNight bool
@@ -298,6 +308,7 @@ func (g *game) begin(id int64) ([]secret, error) {
 	g.Round = 1
 	g.AntidoteUsed = false
 	g.PoisonUsed = false
+	g.SpeechHistory = nil
 	g.touch()
 	return result, nil
 }
@@ -590,6 +601,7 @@ func (g *game) finalizeNight() nightResult {
 	}
 	g.startDay(r.Deaths)
 	r.FirstSpeaker = g.currentSpeaker()
+	r.Archives = g.speechArchives(false)
 	return r
 }
 
@@ -751,6 +763,7 @@ func (g *game) vote(actor, target int64) (voteResult, error) {
 	r.Complete, r.Eliminated = true, r.Tie[0]
 	r.Tie = nil
 	g.Players[r.Eliminated].Alive = false
+	g.archiveCurrentSpeeches()
 	if g.Players[r.Eliminated].Role == roleHunter {
 		g.Phase, g.PendingHunter, g.HunterFromNight = phaseHunter, r.Eliminated, false
 		g.HunterDeaths = []death{{ID: r.Eliminated, Role: roleHunter, Cause: "放逐"}}
@@ -789,6 +802,7 @@ func (g *game) hunterShoot(actor, target int64) (hunterResult, error) {
 	if g.HunterFromNight {
 		g.startDay(g.HunterDeaths)
 		r.FirstSpeaker = g.currentSpeaker()
+		r.Archives = g.speechArchives(false)
 	} else {
 		g.Round++
 		g.startNight()
@@ -864,6 +878,36 @@ func (g *game) voteProgress() (voted, pending []int64) {
 	}
 	return
 }
+
+func (g *game) archiveCurrentSpeeches() {
+	if len(g.Speeches) == 0 {
+		return
+	}
+	g.SpeechHistory = append(g.SpeechHistory, speechArchive{
+		Round:    g.Round,
+		Speeches: append([]speech(nil), g.Speeches...),
+	})
+}
+
+// speechArchives 返回可安全地在房间锁外发送的发言记录副本。
+// includeCurrent 用于投票前，把当前白天已经完成的发言也包含进来。
+func (g *game) speechArchives(includeCurrent bool) []speechArchive {
+	archives := make([]speechArchive, 0, len(g.SpeechHistory)+1)
+	for _, archive := range g.SpeechHistory {
+		archives = append(archives, speechArchive{
+			Round:    archive.Round,
+			Speeches: append([]speech(nil), archive.Speeches...),
+		})
+	}
+	if includeCurrent && len(g.Speeches) > 0 {
+		archives = append(archives, speechArchive{
+			Round:    g.Round,
+			Speeches: append([]speech(nil), g.Speeches...),
+		})
+	}
+	return archives
+}
+
 func (g *game) resetRound() {
 	g.WolfVotes = nil
 	g.WolfOrder = nil
@@ -875,6 +919,7 @@ func (g *game) resetRound() {
 	g.WitchPoison = 0
 	g.DayOrder = nil
 	g.Speeches = nil
+	g.SpeechHistory = nil
 	g.Votes = nil
 	g.VoteTargets = nil
 	g.PendingHunter = 0
