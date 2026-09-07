@@ -51,3 +51,17 @@ func TestFormatRoundPlayersOnlyShowsRolesForDeadPlayers(t *testing.T) {
 		t.Fatalf("alive player role was exposed: %q", text)
 	}
 }
+
+func TestCaptureNightOutcomeIncludesAllClueArchives(t *testing.T) {
+	g := makeStartedGame(t, 5)
+	g.ClueHistory = []clueArchive{
+		{Round: 1, Clues: []clueRecord{{PlayerID: 1, PlayerName: "玩家1", Text: "第一轮"}}},
+		{Round: 2, Clues: []clueRecord{{PlayerID: 2, PlayerName: "玩家2", Text: "第二轮"}}},
+	}
+	outcome := nightOutcome{}
+	captureNightOutcome(g, &outcome)
+
+	if len(outcome.Archives) != 2 || outcome.Archives[0].Round != 1 || outcome.Archives[1].Round != 2 {
+		t.Fatalf("archives = %+v, want rounds 1 and 2", outcome.Archives)
+	}
+}

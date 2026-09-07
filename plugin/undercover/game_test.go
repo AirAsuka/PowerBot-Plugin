@@ -239,7 +239,7 @@ func TestVoteResultTracksVotedAndPendingPlayers(t *testing.T) {
 	}
 }
 
-func TestNextRoundArchivesAndClearsPreviousClues(t *testing.T) {
+func TestNextRoundKeepsAllArchivedCluesAndClearsCurrentRound(t *testing.T) {
 	g := makeStartedGame(t, 5)
 	finishDescriptions(t, g)
 	want := append([]clueRecord(nil), g.RoundClues...)
@@ -256,16 +256,60 @@ func TestNextRoundArchivesAndClearsPreviousClues(t *testing.T) {
 	if result.Winner != "" {
 		t.Skip("random role assignment reached a terminal state")
 	}
-	if result.ClueRound != 1 || len(result.Clues) != len(want) {
-		t.Fatalf("archive round=%d clues=%v, want round=1 clues=%v", result.ClueRound, result.Clues, want)
+	archives := g.clueArchives(false)
+	if len(archives) != 1 || archives[0].Round != 1 || len(archives[0].Clues) != len(want) {
+		t.Fatalf("archives=%v, want one round-1 archive with clues=%v", archives, want)
 	}
 	for i := range want {
-		if result.Clues[i] != want[i] {
-			t.Fatalf("archive clue %d = %+v, want %+v", i, result.Clues[i], want[i])
+		if archives[0].Clues[i] != want[i] {
+			t.Fatalf("archive clue %d = %+v, want %+v", i, archives[0].Clues[i], want[i])
 		}
 	}
 	if len(g.RoundClues) != 0 {
 		t.Fatalf("current round still contains previous clues: %v", g.RoundClues)
+	}
+}
+
+func TestClueArchivesIncludeEveryPreviousRoundAndCurrentRound(t *testing.T) {
+	g := makeStartedGame(t, 5)
+	finishDescriptions(t, g)
+	firstRound := append([]clueRecord(nil), g.RoundClues...)
+
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	if result, err := g.resolveNight(true); err != nil || result.Winner != "" {
+		t.Fatalf("resolve first night: result=%+v err=%v", result, err)
+	}
+	finishDescriptions(t, g)
+	secondRound := append([]clueRecord(nil), g.RoundClues...)
+
+	archives := g.clueArchives(true)
+	if len(archives) != 2 {
+		t.Fatalf("got %d archives, want 2: %v", len(archives), archives)
+	}
+	if archives[0].Round != 1 || !slices.Equal(archives[0].Clues, firstRound) {
+		t.Fatalf("first archive = %+v, want round 1 clues %v", archives[0], firstRound)
+	}
+	if archives[1].Round != 2 || !slices.Equal(archives[1].Clues, secondRound) {
+		t.Fatalf("second archive = %+v, want round 2 clues %v", archives[1], secondRound)
+	}
+	if historical := g.clueArchives(false); len(historical) != 1 || historical[0].Round != 1 {
+		t.Fatalf("round-start archives = %v, want only completed round 1", historical)
+	}
+
+	archives[0].Clues[0].Text = "被外部修改"
+	if g.ClueHistory[0].Clues[0].Text == "被外部修改" {
+		t.Fatal("clueArchives returned storage owned by the game")
+	}
+
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	if result, err := g.resolveNight(true); err != nil || result.Winner != "" {
+		t.Fatalf("resolve second night: result=%+v err=%v", result, err)
+	}
+	thirdRoundArchives := g.clueArchives(false)
+	if len(thirdRoundArchives) != 2 || thirdRoundArchives[0].Round != 1 || thirdRoundArchives[1].Round != 2 {
+		t.Fatalf("third-round archives = %v, want rounds 1 and 2", thirdRoundArchives)
 	}
 }
 
@@ -549,15 +593,15 @@ func TestNightActionPattern(t *testing.T) {
 func TestBlankGuessPattern(t *testing.T) {
 	re := regexp.MustCompile(blankGuessPattern)
 	for _, input := range []string{
-		"卧底猜词 牛奶|豆浆",
-		"卧底猜词 牛奶｜豆浆",
-		"卧底猜词 987654321 牛奶|豆浆",
+		"卧底猜词 牛奶 豆浆",
+		"卧底猜词 牛奶   豆浆",
+		"卧底猜词 987654321 牛奶 豆浆",
 	} {
 		if !re.MatchString(input) {
 			t.Errorf("blank guess pattern rejected %q", input)
 		}
 	}
-	for _, input := range []string{"卧底猜词", "卧底猜词 放弃", "卧底猜词 牛奶"} {
+	for _, input := range []string{"卧底猜词", "卧底猜词 放弃", "卧底猜词 牛奶", "卧底猜词 牛奶|豆浆", "卧底猜词 牛奶｜豆浆"} {
 		if re.MatchString(input) {
 			t.Errorf("blank guess pattern accepted %q", input)
 		}

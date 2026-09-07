@@ -53,7 +53,7 @@ var (
 	refresh      = false
 	timeNow      = 0
 	refreshFish  = func(ctx *zero.Ctx) bool {
-		if refresh && timeNow == time.Now().Day() {
+		if refresh && timeNow == currentDateKey(time.Now()) {
 			return true
 		}
 		refresh, err := dbdata.refreshStroeInfo()
@@ -61,7 +61,7 @@ var (
 			ctx.SendChain(message.Text("[ERROR at store.go.1]:", err))
 			return refresh
 		}
-		timeNow = time.Now().Day()
+		timeNow = currentDateKey(time.Now())
 		return refresh
 	}
 )
@@ -490,6 +490,10 @@ func init() {
 		index := 0
 		pice := make([]int, 0, len(thingInfos))
 		for _, info := range thingInfos {
+			if isDailyDiamondPole(info) {
+				pice = append(pice, dailyDiamondPolePrice)
+				continue
+			}
 			if strings.Contains(thingName, "竿") || thingName == "三叉戟" {
 				poleInfo := strings.Split(info.Other, "/")
 				durable, _ := strconv.Atoi(poleInfo[0])
@@ -820,7 +824,9 @@ func drawStroeInfoImage(stroeInfo []store) (picImage image.Image, err error) {
 		}
 		numberStr := strconv.Itoa(info.Number)
 		pice := 0
-		if strings.Contains(name, "竿") {
+		if isDailyDiamondPole(info) {
+			pice = dailyDiamondPolePrice
+		} else if strings.Contains(name, "竿") {
 			poleInfo := strings.Split(info.Other, "/")
 			durable, _ := strconv.Atoi(poleInfo[0])
 			maintenance, _ := strconv.Atoi(poleInfo[1])

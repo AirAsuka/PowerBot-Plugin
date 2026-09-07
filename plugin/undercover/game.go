@@ -115,11 +115,17 @@ type elimination struct {
 	Role playerRole
 }
 
-// clueRecord 保存一名玩家在某轮提交的有效描述，用于下一轮开始时生成群聊记录。
+// clueRecord 保存一名玩家在某轮提交的有效描述，用于生成群聊记录。
 type clueRecord struct {
 	PlayerID   int64
 	PlayerName string
 	Text       string
+}
+
+// clueArchive 保存一整轮的有效描述。历史记录保留到本局结束，供后续轮次和投票前回放。
+type clueArchive struct {
+	Round int
+	Clues []clueRecord
 }
 
 type gameReveal struct {
@@ -152,8 +158,6 @@ type nightResult struct {
 	Killed        []elimination
 	Winner        string
 	NextDescriber int64
-	ClueRound     int
-	Clues         []clueRecord
 	Reveal        gameReveal
 }
 
@@ -166,6 +170,7 @@ type game struct {
 	Round          int
 	Turn           int
 	RoundClues     []clueRecord
+	ClueHistory    []clueArchive
 	Votes          map[int64]int64
 	VoteTargets    map[int64]struct{}
 	NightActions   map[int64]int64 // 0 表示主动选择“不刀”
@@ -252,6 +257,7 @@ func (g *game) begin(requester int64, pair wordPair) ([]secret, error) {
 	g.Round = 1
 	g.Turn = 0
 	g.RoundClues = nil
+	g.ClueHistory = nil
 	g.Phase = phaseDealing
 	g.Votes = make(map[int64]int64)
 	g.VoteTargets = nil
@@ -331,6 +337,7 @@ func (g *game) cancelDeal() error {
 	g.Round = 0
 	g.Turn = 0
 	g.RoundClues = nil
+	g.ClueHistory = nil
 	g.Votes = nil
 	g.VoteTargets = nil
 	g.NightActions = nil
@@ -597,9 +604,11 @@ func (g *game) resolveNight(force bool) (nightResult, error) {
 		return result, nil
 	}
 
+	g.ClueHistory = append(g.ClueHistory, clueArchive{
+		Round: g.Round,
+		Clues: append([]clueRecord(nil), g.RoundClues...),
+	})
 	g.Round++
-	result.ClueRound = g.Round - 1
-	result.Clues = append([]clueRecord(nil), g.RoundClues...)
 	g.RoundClues = nil
 	g.Phase = phaseDescribing
 	g.NightActions = nil
@@ -717,6 +726,25 @@ func (g *game) voteProgress() (voted, pending []int64) {
 		}
 	}
 	return voted, pending
+}
+
+// clueArchives 返回可安全地在房间锁外发送的发言记录副本。
+// includeCurrent 用于投票前，把刚完成的本轮发言也包含进来。
+func (g *game) clueArchives(includeCurrent bool) []clueArchive {
+	archives := make([]clueArchive, 0, len(g.ClueHistory)+1)
+	for _, archive := range g.ClueHistory {
+		archives = append(archives, clueArchive{
+			Round: archive.Round,
+			Clues: append([]clueRecord(nil), archive.Clues...),
+		})
+	}
+	if includeCurrent && len(g.RoundClues) > 0 {
+		archives = append(archives, clueArchive{
+			Round: g.Round,
+			Clues: append([]clueRecord(nil), g.RoundClues...),
+		})
+	}
+	return archives
 }
 
 func (g *game) expired(now time.Time) bool {

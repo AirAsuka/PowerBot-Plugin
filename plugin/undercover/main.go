@@ -22,7 +22,7 @@ const helpText = `谁是卧底（3—12人）
 
 其他指令：卧底玩家、卧底状态、退出卧底、结束卧底
 身份配置：5人起加入白板；8人起配置2狼并加入天使。
-夜晚规则：投票后，普通拿词玩家私聊选择刀或不刀；狼刀人成功，平民开刀会自杀。白板每夜可猜两个词，全部猜中则白板单独获胜；天使没有夜间行动。
+夜晚规则：投票后，普通拿词玩家私聊选择刀或不刀；狼刀人成功，【平民开刀会自杀！】白板每夜可猜两个词，全部猜中则白板单独获胜；天使没有夜间行动。
 胜负规则：所有狼出局则平民阵营胜；存活狼数达到其他存活人数时狼人阵营胜。
 提示：开局前请先私聊机器人任意消息，确保机器人能发词。
 
@@ -244,6 +244,7 @@ func handleClue(ctx *zero.Ctx) {
 		nextName     string
 		voting       bool
 		voteProgress string
+		archives     []clueArchive
 	)
 	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
 		var err error
@@ -251,6 +252,7 @@ func handleClue(ctx *zero.Ctx) {
 		if err == nil && voting {
 			voted, pending := g.voteProgress()
 			voteProgress = formatVoteProgress(g, voted, pending)
+			archives = g.clueArchives(true)
 		}
 		if nextID != 0 && g.Players[nextID] != nil {
 			nextName = g.Players[nextID].Name
@@ -266,6 +268,7 @@ func handleClue(ctx *zero.Ctx) {
 		return
 	}
 	if voting {
+		sendClueArchives(ctx, ctx.Event.GroupID, archives)
 		ctx.SendChain(message.Text("本轮描述完毕，进入投票阶段。所有存活玩家请发送“卧底投票 @玩家”；可以改票，以最后一票为准。\n", voteProgress))
 		return
 	}
@@ -286,6 +289,7 @@ func handleVote(ctx *zero.Ctx) {
 		tieNames       []string
 		finalSummary   string
 		voteProgress   string
+		archives       []clueArchive
 		room           *game
 	)
 	err = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
@@ -300,6 +304,9 @@ func handleVote(ctx *zero.Ctx) {
 		}
 		for _, id := range result.Tie {
 			tieNames = append(tieNames, g.Players[id].Name)
+		}
+		if len(result.Tie) > 0 {
+			archives = g.clueArchives(true)
 		}
 		if result.Winner != "" {
 			finalSummary = revealSummary(g, result.Reveal)
@@ -321,6 +328,7 @@ func handleVote(ctx *zero.Ctx) {
 		return
 	}
 	if len(result.Tie) > 0 {
+		sendClueArchives(ctx, ctx.Event.GroupID, archives)
 		ctx.SendChain(message.Text("本轮平票：", strings.Join(tieNames, "、"), "。请所有存活玩家重新投票，本轮只能投给以上候选人。\n", voteProgress))
 		return
 	}
