@@ -11,6 +11,7 @@ on:
         required: true
 
 env:
+  GOTOOLCHAIN: local
   BINARY_SUFFIX: "${{ inputs.prefix }}"
   PR_PROMPT: "::warning:: Build artifact will not be uploaded due to the workflow is trigged by pull request."
   LD_FLAGS: "-w -s"
@@ -33,14 +34,15 @@ jobs:
             goarch: 386
       fail-fast: true
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup Go environment
-        uses: actions/setup-go@master
+        uses: actions/setup-go@v7
         with:
-          go-version: '^1.25'
+          go-version: '1.24.2'
+          check-latest: false
 
       - name: Cache downloaded module
         uses: actions/cache@master
