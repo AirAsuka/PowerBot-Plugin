@@ -17,7 +17,7 @@ const helpText = `谁是卧底（3—12人）
 1. 创建卧底（创建者自动加入）
 2. 其他玩家发送“加入卧底”
 3. 房主发送“开始卧底”，机器人会私聊每个人的词
-4. 按提示发送“卧底描述 你的描述”
+4. 按提示发送“卧底描述 你的描述”（每人限时2分钟，超时自动跳过）
 5. 描述结束后发送“卧底投票 @玩家”或“卧底投票 弃票”
 
 其他指令：卧底玩家、卧底状态、退出卧底、结束卧底
@@ -233,8 +233,9 @@ func startGame(ctx *zero.Ctx) {
 	})
 	ctx.SendChain(
 		message.Text("发词完成！", roleSetupText(len(secrets)), "\n第1轮描述顺序：\n", numberedNames(orderNames), "\n请 "),
-		message.At(firstID), message.Text(" 先发送“卧底描述 你的描述”。"),
+		message.At(firstID), message.Text(" 先发送“卧底描述 你的描述”（限时2分钟）。"),
 	)
+	scheduleCurrentDescriptionTimeout(ctx, ctx.Event.GroupID, g)
 }
 
 func handleClue(ctx *zero.Ctx) {
@@ -245,8 +246,10 @@ func handleClue(ctx *zero.Ctx) {
 		voting       bool
 		voteProgress string
 		archives     []clueArchive
+		room         *game
 	)
 	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+		room = g
 		var err error
 		nextID, voting, err = g.describe(ctx.Event.UserID, clue)
 		if err == nil && voting {
@@ -272,7 +275,8 @@ func handleClue(ctx *zero.Ctx) {
 		ctx.SendChain(message.Text("本轮描述完毕，进入投票阶段。所有存活玩家请发送“卧底投票 @玩家”或“卧底投票 弃票”；可以改票，以最后一票为准。\n", voteProgress))
 		return
 	}
-	ctx.SendChain(message.Text("描述已记录，下一位请 "), message.At(nextID), message.Text("（", nextName, "）描述。"))
+	ctx.SendChain(message.Text("描述已记录，下一位请 "), message.At(nextID), message.Text("（", nextName, "）描述（限时2分钟）。"))
+	scheduleCurrentDescriptionTimeout(ctx, ctx.Event.GroupID, room)
 }
 
 func handleVote(ctx *zero.Ctx) {

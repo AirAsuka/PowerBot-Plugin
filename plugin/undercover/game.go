@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	minPlayers   = 3
-	maxPlayers   = 12
-	maxClueRunes = 80
+	minPlayers             = 3
+	maxPlayers             = 12
+	maxClueRunes           = 80
+	descriptionTurnTimeout = 2 * time.Minute
 )
 
 var (
@@ -163,25 +164,27 @@ type nightResult struct {
 }
 
 type game struct {
-	HostID         int64
-	Players        map[int64]*player
-	JoinOrder      []int64
-	Order          []int64
-	Phase          phase
-	Round          int
-	Turn           int
-	RoundClues     []clueRecord
-	ClueHistory    []clueArchive
-	Votes          map[int64]int64
-	VoteTargets    map[int64]struct{}
-	NightActions   map[int64]int64 // 0 表示主动选择“不刀”
-	BlankActed     bool            // 白板本夜已经猜词或主动放弃
-	CivilianWord   string
-	UndercoverWord string
-	WolfIDs        []int64
-	BlankID        int64
-	AngelID        int64
-	UpdatedAt      time.Time
+	HostID              int64
+	Players             map[int64]*player
+	JoinOrder           []int64
+	Order               []int64
+	Phase               phase
+	Round               int
+	Turn                int
+	DescriptionTurns    int
+	DescriptionDeadline time.Time
+	RoundClues          []clueRecord
+	ClueHistory         []clueArchive
+	Votes               map[int64]int64
+	VoteTargets         map[int64]struct{}
+	NightActions        map[int64]int64 // 0 表示主动选择“不刀”
+	BlankActed          bool            // 白板本夜已经猜词或主动放弃
+	CivilianWord        string
+	UndercoverWord      string
+	WolfIDs             []int64
+	BlankID             int64
+	AngelID             int64
+	UpdatedAt           time.Time
 }
 
 func newGame(hostID int64, hostName string) *game {
@@ -257,6 +260,8 @@ func (g *game) begin(requester int64, pair wordPair) ([]secret, error) {
 	g.assignRoles()
 	g.Round = 1
 	g.Turn = 0
+	g.DescriptionTurns = 0
+	g.DescriptionDeadline = time.Time{}
 	g.RoundClues = nil
 	g.ClueHistory = nil
 	g.Phase = phaseDealing
@@ -324,6 +329,7 @@ func (g *game) completeDeal() error {
 		return errors.New("发词阶段已经结束")
 	}
 	g.Phase = phaseDescribing
+	g.startDescriptionTimer()
 	g.touch()
 	return nil
 }
@@ -337,6 +343,8 @@ func (g *game) cancelDeal() error {
 	g.Phase = phaseLobby
 	g.Round = 0
 	g.Turn = 0
+	g.DescriptionTurns = 0
+	g.DescriptionDeadline = time.Time{}
 	g.RoundClues = nil
 	g.ClueHistory = nil
 	g.Votes = nil
@@ -389,18 +397,38 @@ func (g *game) describe(id int64, clue string) (next int64, voting bool, err err
 		PlayerName: p.Name,
 		Text:       clue,
 	})
-	// Turn is the current position in Order, not the number of players that have
-	// described this round. Later rounds may start from the middle of Order, so
-	// advance it circularly and use RoundClues to decide when everyone has spoken.
-	g.Turn = (g.Turn + 1) % len(g.Order)
-	g.touch()
-	if len(g.RoundClues) == len(g.Order) {
+	return g.advanceDescription()
+}
+
+// skipDescription skips the current player's description when their turn times out.
+// expectedRound and expectedPlayer make callbacks from an earlier turn harmless.
+func (g *game) skipDescription(expectedRound int, expectedPlayer int64) (next int64, voting bool, skipped int64, ok bool) {
+	if g.Phase != phaseDescribing || g.Round != expectedRound || g.currentDescriber() != expectedPlayer {
+		return 0, false, 0, false
+	}
+	skipped = expectedPlayer
+	next, voting, _ = g.advanceDescription()
+	return next, voting, skipped, true
+}
+
+func (g *game) advanceDescription() (next int64, voting bool, err error) {
+	g.DescriptionTurns++
+	if g.DescriptionTurns == len(g.Order) {
 		g.Phase = phaseVoting
 		g.Turn = 0
+		g.DescriptionDeadline = time.Time{}
 		g.Votes = make(map[int64]int64)
+		g.touch()
 		return 0, true, nil
 	}
+	g.Turn = (g.Turn + 1) % len(g.Order)
+	g.startDescriptionTimer()
+	g.touch()
 	return g.Order[g.Turn], false, nil
+}
+
+func (g *game) startDescriptionTimer() {
+	g.DescriptionDeadline = time.Now().Add(descriptionTurnTimeout)
 }
 
 func (g *game) vote(voter, target int64) (voteResult, error) {
@@ -626,6 +654,7 @@ func (g *game) resolveNight(force bool) (nightResult, error) {
 	g.Round++
 	g.RoundClues = nil
 	g.Phase = phaseDescribing
+	g.DescriptionTurns = 0
 	g.NightActions = nil
 	g.BlankActed = false
 	g.Votes = make(map[int64]int64)
@@ -641,6 +670,7 @@ func (g *game) resolveNight(force bool) (nightResult, error) {
 		}
 	}
 	result.NextDescriber = g.Order[g.Turn]
+	g.startDescriptionTimer()
 	g.touch()
 	return result, nil
 }

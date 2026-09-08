@@ -143,6 +143,51 @@ func TestDescriptionTurnAndSecretProtection(t *testing.T) {
 	}
 }
 
+func TestDescriptionTimeoutSkipsPlayerAndStillReachesVoting(t *testing.T) {
+	g := makeStartedGame(t, 4)
+	order := append([]int64(nil), g.Order...)
+
+	next, voting, skipped, ok := g.skipDescription(g.Round, order[0])
+	if !ok || voting || skipped != order[0] || next != order[1] {
+		t.Fatalf("first timeout: next=%d voting=%v skipped=%d ok=%v", next, voting, skipped, ok)
+	}
+	if g.DescriptionTurns != 1 || len(g.RoundClues) != 0 {
+		t.Fatalf("first timeout recorded unexpected state: turns=%d clues=%v", g.DescriptionTurns, g.RoundClues)
+	}
+
+	if next, voting, err := g.describe(order[1], "正常描述"); err != nil || voting || next != order[2] {
+		t.Fatalf("description after timeout: next=%d voting=%v err=%v", next, voting, err)
+	}
+	if _, _, _, ok := g.skipDescription(g.Round, order[1]); ok {
+		t.Fatal("stale timeout skipped a later player")
+	}
+
+	if next, voting, _, ok := g.skipDescription(g.Round, order[2]); !ok || voting || next != order[3] {
+		t.Fatalf("third turn timeout: next=%d voting=%v ok=%v", next, voting, ok)
+	}
+	if next, voting, skipped, ok := g.skipDescription(g.Round, order[3]); !ok || !voting || next != 0 || skipped != order[3] {
+		t.Fatalf("last timeout: next=%d voting=%v skipped=%d ok=%v", next, voting, skipped, ok)
+	}
+	if g.Phase != phaseVoting || g.DescriptionTurns != len(order) || len(g.RoundClues) != 1 {
+		t.Fatalf("final state: phase=%v turns=%d clues=%v", g.Phase, g.DescriptionTurns, g.RoundClues)
+	}
+}
+
+func TestDescriptionTimeoutRejectsWrongRoundOrPlayer(t *testing.T) {
+	g := makeStartedGame(t, 3)
+	current := g.currentDescriber()
+	if _, _, _, ok := g.skipDescription(g.Round+1, current); ok {
+		t.Fatal("timeout from a different round was accepted")
+	}
+	wrongPlayer := g.Order[1]
+	if _, _, _, ok := g.skipDescription(g.Round, wrongPlayer); ok {
+		t.Fatal("timeout for a non-current player was accepted")
+	}
+	if g.currentDescriber() != current || g.DescriptionTurns != 0 {
+		t.Fatalf("rejected timeout changed state: current=%d turns=%d", g.currentDescriber(), g.DescriptionTurns)
+	}
+}
+
 func TestCivilianWinsWhenLastWolfIsVotedOut(t *testing.T) {
 	g := makeStartedGame(t, 3)
 	finishDescriptions(t, g)

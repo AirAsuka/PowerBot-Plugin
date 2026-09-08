@@ -361,8 +361,9 @@ func announceNight(ctx *zero.Ctx, groupID int64, outcome nightOutcome) {
 	ctx.SendGroupMessage(groupID, message.Message{
 		message.Text(b.String()),
 		message.At(outcome.Result.NextDescriber),
-		message.Text("（", outcome.NextName, "）先描述。"),
+		message.Text("（", outcome.NextName, "）先描述（限时2分钟）。"),
 	})
+	scheduleCurrentDescriptionTimeout(ctx, groupID, outcome.Room)
 }
 
 func formatRoundPlayers(dead []namedElimination, alive []string) string {
