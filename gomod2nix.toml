@@ -30,8 +30,8 @@ schema = 3
     hash = 'sha256-R9QaP5FQwtWpHdbCoNX/rYOS/CgkIeRdFB9cwJ4n/JM='
 
   [mod.'github.com/FloatTech/ttl']
-    version = 'v0.0.0-20250224045156-012b1463287d'
-    hash = 'sha256-C5xBt0roPgahradCOTgkhL+j5bvoSXmGwdqcu0aSczc='
+    version = 'v0.0.0-20260412050038-bd89b9d66fcd'
+    hash = 'sha256-YiU2jzV5FSVqRs5kIu4NwncPik887hjYSXne+pudcYA='
 
   [mod.'github.com/FloatTech/zbpctrl']
     version = 'v1.7.1'

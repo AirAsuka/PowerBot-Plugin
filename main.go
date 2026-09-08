@@ -44,7 +44,7 @@ import (
 
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/atri" // ATRI词库
 
-	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/manager" // 群管
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/manager" // 群管
 
 	// _ "github.com/FloatTech/zbputils/job" // 定时指令触发器
 
@@ -112,8 +112,8 @@ import (
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/inject"            // 注入指令 √
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/jandan"            // 煎蛋网无聊图
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/jptingroom"        // 日语听力学习材料
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/kfccrazythursday" // 疯狂星期四
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/keywordimg"       // 关键词图片
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/kfccrazythursday" // 疯狂星期四
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/llm"               // 大模型聊天和群聊总结
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/lolicon"           // lolicon 随机图片
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/lolimi"            // 桑帛云 API
@@ -153,7 +153,9 @@ import (
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/tiangou"     // 舔狗日记
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/tracemoe"    // 搜番
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/translation" // 翻译
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/undercover"  // 谁是卧底
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wallet"      // 钱包
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/werewolf"    // 狼人杀
 
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/warframeapi"       // warframeAPI插件
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/wife"      // 抽老婆

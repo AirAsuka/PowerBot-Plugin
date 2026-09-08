@@ -38,7 +38,11 @@ var (
 
 // NewClock 添加一个新时钟
 func NewClock(db *sql.Sqlite) (c Clock) {
-	c.cron = cron.New()
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		loc = time.FixedZone("Asia/Shanghai", 8*60*60)
+	}
+	c.cron = cron.New(cron.WithLocation(loc))
 	c.entries = make(map[uint32]cron.EntryID)
 	c.timers = &map[uint32]*Timer{}
 	c.loadTimers(db)
@@ -57,7 +61,7 @@ func (c *Clock) RegisterTimer(ts *Timer, save, isinit bool) bool {
 	}
 	t, ok := c.GetTimer(key)
 	if t != ts && ok { // 避免重复注册定时器
-		t.SetEn(false)
+		c.CancelTimer(key)
 	}
 	logrus.Infoln("[群管]注册计时器", key)
 	if ts.Cron != "" {
@@ -139,6 +143,28 @@ func (c *Clock) CancelTimer(key uint32) bool {
 	return false
 }
 
+// CancelWeeklyTimers cancels all targeted weekly reminders in a group.
+// The mention list identifies reminders created by the weekly command, so
+// ordinary cron reminders and @all reminders remain untouched.
+func (c *Clock) CancelWeeklyTimers(grpID int64) int {
+	c.timersmu.RLock()
+	keys := make([]uint32, 0)
+	for key, t := range *c.timers {
+		if t.GrpID == grpID && t.AtQQ != "" {
+			keys = append(keys, key)
+		}
+	}
+	c.timersmu.RUnlock()
+
+	deleted := 0
+	for _, key := range keys {
+		if c.CancelTimer(key) {
+			deleted++
+		}
+	}
+	return deleted
+}
+
 // ListTimers 列出本群所有计时器
 func (c *Clock) ListTimers(grpID int64) []string {
 	// 数组默认长度为map长度,后面append时,不需要重新申请内存和拷贝,效率很高
@@ -190,6 +216,9 @@ func (c *Clock) loadTimers(db *sql.Sqlite) {
 	c.db = db
 	err := c.db.Create("timer", &Timer{})
 	if err == nil {
+		// Create does not alter tables created by older versions. Add the target
+		// column lazily so existing installations keep all their reminders.
+		_, _ = c.db.Exec("ALTER TABLE timer ADD COLUMN atqq TEXT DEFAULT ''")
 		var t Timer
 		_ = c.db.FindFor("timer", &t, "", func() error {
 			tescape := t

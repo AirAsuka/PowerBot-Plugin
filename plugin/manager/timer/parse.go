@@ -39,6 +39,13 @@ func GetFilledCronTimer(croncmd string, alert string, img string, botqq, gid int
 	return &t
 }
 
+// GetFilledCronAtTimer creates a cron reminder which mentions selected users.
+func GetFilledCronAtTimer(croncmd, alert, atQQ string, botqq, gid int64) *Timer {
+	t := GetFilledCronTimer(croncmd, alert, "", botqq, gid)
+	t.AtQQ = atQQ
+	return t
+}
+
 // GetFilledTimer 获得填充好的ts
 func GetFilledTimer(dateStrs []string, botqq, grp int64, matchDateOnly bool) *Timer {
 	monthStr := []rune(dateStrs[1])
