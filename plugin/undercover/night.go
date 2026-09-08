@@ -440,6 +440,8 @@ func roleSetupText(playerCount int) string {
 	switch {
 	case playerCount >= 8:
 		return "本局配置：2狼、1白板、1天使，其余为平民。"
+	case playerCount >= 7:
+		return "本局配置：2狼、1白板，其余为平民。"
 	case playerCount >= 5:
 		return "本局配置：1狼、1白板，其余为平民。"
 	default:

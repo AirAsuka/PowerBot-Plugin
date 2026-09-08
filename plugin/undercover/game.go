@@ -299,7 +299,7 @@ func (g *game) assignRoles() {
 	wolfCount := 1
 	hasBlank := len(ids) >= 5
 	hasAngel := len(ids) >= 8
-	if hasAngel {
+	if len(ids) >= 7 {
 		wolfCount = 2
 	}
 	for _, p := range g.Players {
