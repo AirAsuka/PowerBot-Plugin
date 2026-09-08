@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -140,6 +141,50 @@ func TestDescriptionTurnAndSecretProtection(t *testing.T) {
 	}
 	if next, voting, err := g.describe(first, "一种日常可见的东西"); err != nil || voting || next != second {
 		t.Fatalf("next=%d voting=%v err=%v", next, voting, err)
+	}
+}
+
+func TestDescriptionRejectsVisibleWordCharacters(t *testing.T) {
+	tests := []struct {
+		name  string
+		words []string
+		clue  string
+	}{
+		{name: "whole word", words: []string{"牛奶"}, clue: "我喜欢牛奶"},
+		{name: "first character", words: []string{"牛奶"}, clue: "牛的产物"},
+		{name: "last character", words: []string{"牛奶"}, clue: "奶白色的饮品"},
+		{name: "angel first word", words: []string{"牛奶", "豆浆"}, clue: "奶白色的饮品"},
+		{name: "angel second word", words: []string{"牛奶", "豆浆"}, clue: "豆子做的"},
+		{name: "case insensitive", words: []string{"iPhone"}, clue: "PHONE"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			room := makeStartedGame(t, 3)
+			current := room.currentDescriber()
+			room.Players[current].Words = test.words
+			deadline := room.DescriptionDeadline
+			next, voting, err := room.describe(current, test.clue)
+			if err == nil || !strings.Contains(err.Error(), "请撤回") || !strings.Contains(err.Error(), "重新发送") {
+				t.Fatalf("expected withdrawal and retry reminder, got %v", err)
+			}
+			if next != current || voting || room.currentDescriber() != current || room.DescriptionTurns != 0 || len(room.RoundClues) != 0 || room.Phase != phaseDescribing || !room.DescriptionDeadline.Equal(deadline) {
+				t.Fatal("rejected description changed turn state")
+			}
+			if _, _, err := room.describe(current, "一种日常可见的东西"); err != nil {
+				t.Fatalf("safe retry rejected: %v", err)
+			}
+		})
+	}
+}
+
+func TestDescriptionAllowsCharactersOutsideVisibleWords(t *testing.T) {
+	for _, words := range [][]string{{"牛奶"}, nil} {
+		room := makeStartedGame(t, 3)
+		current := room.currentDescriber()
+		room.Players[current].Words = words
+		if _, _, err := room.describe(current, "豆浆"); err != nil {
+			t.Fatalf("words=%v: description rejected: %v", words, err)
+		}
 	}
 }
 

@@ -387,8 +387,8 @@ func (g *game) describe(id int64, clue string) (next int64, voting bool, err err
 		return id, false, fmt.Errorf("描述不能超过%d个字", maxClueRunes)
 	}
 	for _, word := range p.Words {
-		if strings.Contains(strings.ToLower(clue), strings.ToLower(word)) {
-			return id, false, errors.New("描述中不能直接包含你看到的词语")
+		if strings.ContainsAny(strings.ToLower(clue), strings.ToLower(word)) {
+			return id, false, errors.New("描述中包含你看到的词语中的字，请撤回这条消息，并重新发送“卧底描述 你的描述”")
 		}
 	}
 
