@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
@@ -18,7 +19,7 @@ const helpText = `谁是卧底（3—12人）
 2. 其他玩家发送“加入卧底”
 3. 房主发送“开始卧底”，机器人会私聊每个人的词
 4. 按提示发送“卧底描述 你的描述”（每人限时2分钟，超时自动跳过）
-5. 描述结束后发送“卧底投票 @玩家”或“卧底投票 弃票”
+5. 描述结束后发送“卧底投票 @玩家”或“卧底投票 弃票”（限时3分钟，超时未投视为弃票）
 
 其他指令：卧底玩家、卧底状态、退出卧底、结束卧底
 身份配置：5人起加入白板；7人起配置2狼；8人起加入天使。
@@ -271,8 +272,9 @@ func handleClue(ctx *zero.Ctx) {
 		return
 	}
 	if voting {
+		scheduleVotingTimeout(ctx, room)
 		sendClueArchives(ctx, ctx.Event.GroupID, archives)
-		ctx.SendChain(message.Text("本轮描述完毕，进入投票阶段。所有存活玩家请发送“卧底投票 @玩家”或“卧底投票 弃票”；可以改票，以最后一票为准。\n", voteProgress))
+		ctx.SendChain(message.Text("本轮描述完毕，进入投票阶段（限时3分钟，超时未投视为弃票）。所有存活玩家请发送“卧底投票 @玩家”或“卧底投票 弃票”；可以改票，以最后一票为准。\n", voteProgress))
 		return
 	}
 	ctx.SendChain(message.Text("描述已记录，下一位请 "), message.At(nextID), message.Text("（", nextName, "）描述（限时2分钟）。"))
@@ -280,6 +282,15 @@ func handleClue(ctx *zero.Ctx) {
 }
 
 func handleVote(ctx *zero.Ctx) {
+	// Ignore closed ballots before parsing targets or sending any archive/reply.
+	accepting := false
+	_ = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+		accepting = g.acceptsVote(time.Now())
+		return nil
+	})
+	if !accepting {
+		return
+	}
 	matches := ctx.State["regex_matched"].([]string)
 	target, err := voteTarget(matches)
 	if err != nil {
@@ -287,6 +298,11 @@ func handleVote(ctx *zero.Ctx) {
 		return
 	}
 
+	processVote(ctx, target, nil, time.Time{})
+}
+
+// processVote shares settlement and announcements between player votes and the timer.
+func processVote(ctx *zero.Ctx, target int64, expected *game, deadline time.Time) {
 	var (
 		result         voteResult
 		eliminatedName string
@@ -296,10 +312,17 @@ func handleVote(ctx *zero.Ctx) {
 		archives       []clueArchive
 		room           *game
 	)
-	err = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
 		room = g
 		var voteErr error
-		result, voteErr = g.vote(ctx.Event.UserID, target)
+		if expected != nil {
+			if g != expected {
+				return errVoteIgnored
+			}
+			result, voteErr = g.expireVoting(deadline, time.Now())
+		} else {
+			result, voteErr = g.vote(ctx.Event.UserID, target)
+		}
 		if voteErr != nil {
 			return voteErr
 		}
@@ -319,10 +342,16 @@ func handleVote(ctx *zero.Ctx) {
 		return nil
 	})
 	if err != nil {
+		if expected != nil || err == errVoteIgnored || err == errRoomNotFound {
+			return
+		}
 		sendError(ctx, err)
 		return
 	}
 
+	if expected != nil {
+		ctx.SendChain(message.Text("投票限时3分钟已到，按已收到的票结算，未投票玩家视为弃票。"))
+	}
 	if !result.Complete {
 		action := "投票已记录"
 		if target == 0 {
@@ -337,12 +366,13 @@ func handleVote(ctx *zero.Ctx) {
 		return
 	}
 	if len(result.Tie) > 0 {
+		scheduleVotingTimeout(ctx, room)
 		sendClueArchives(ctx, ctx.Event.GroupID, archives)
-		ctx.SendChain(message.Text("本轮平票：", strings.Join(tieNames, "、"), "。请所有存活玩家重新投票，本轮只能投给以上候选人或弃票。\n", voteProgress))
+		ctx.SendChain(message.Text("本轮平票：", strings.Join(tieNames, "、"), "。请所有存活玩家重新投票（限时3分钟），本轮只能投给以上候选人或弃票。\n", voteProgress))
 		return
 	}
 	if result.NoElimination {
-		ctx.SendChain(message.Text("所有玩家均已弃票，本轮无人被投出。\n天黑请闭眼，机器人正在私聊本夜可行动的玩家。"))
+		ctx.SendChain(message.Text("本轮无有效候选票，无人被投出。\n天黑请闭眼，机器人正在私聊本夜可行动的玩家。"))
 		startNight(ctx, ctx.Event.GroupID, room, result.NightActors)
 		return
 	}

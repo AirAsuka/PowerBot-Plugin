@@ -11,12 +11,14 @@ import (
 )
 
 const (
+	votingTimeout  = 3 * time.Minute
 	minPlayers     = 6
 	maxPlayers     = 12
 	maxSpeechRunes = 200
 )
 
 var (
+	errVoteIgnored      = errors.New("投票已截止或当前不接受投票")
 	errRoomExists       = errors.New("本群已经有狼人杀房间了")
 	errRoomNotFound     = errors.New("本群还没有狼人杀房间，请先发送“创建狼人杀”")
 	errGameStarted      = errors.New("游戏已经开始，无法加入或退出")
@@ -231,6 +233,7 @@ type game struct {
 	Speeches        []speech
 	SpeechHistory   []speechArchive
 	Votes           map[int64]int64
+	VoteDeadline    time.Time
 	VoteTargets     map[int64]struct{}
 	VoteSummarySent bool
 
@@ -797,6 +800,7 @@ func (g *game) skipToVote(actor int64) error {
 
 func (g *game) beginVoting() {
 	g.Phase = phaseVoting
+	g.VoteDeadline = time.Now().Add(votingTimeout)
 	g.Votes = make(map[int64]int64)
 	g.VoteTargets = nil
 	g.VoteSummarySent = false
@@ -901,8 +905,8 @@ func (g *game) explode(actor int64) (explosionResult, error) {
 func (g *game) vote(actor, target int64) (voteResult, error) {
 	alive := g.aliveIDs()
 	r := voteResult{Needed: len(alive)}
-	if g.Phase != phaseVoting {
-		return r, errors.New("现在不是放逐投票阶段")
+	if !g.acceptsVote(time.Now()) {
+		return r, errVoteIgnored
 	}
 	p := g.Players[actor]
 	if p == nil {
@@ -933,6 +937,13 @@ func (g *game) vote(actor, target int64) (voteResult, error) {
 	if r.Cast < r.Needed {
 		return r, nil
 	}
+	return g.resolveVoting(r)
+}
+
+func (g *game) resolveVoting(r voteResult) (voteResult, error) {
+	g.VoteDeadline = time.Time{}
+	g.touch()
+	alive := g.aliveIDs()
 	counts := map[int64]int{}
 	max := 0
 	for _, id := range g.Votes {
@@ -970,6 +981,7 @@ func (g *game) vote(actor, target int64) (voteResult, error) {
 			g.startNight()
 			return r, nil
 		}
+		g.VoteDeadline = time.Now().Add(votingTimeout)
 		g.Votes = make(map[int64]int64)
 		g.VoteTargets = make(map[int64]struct{}, len(r.Tie))
 		g.VoteSummarySent = false

@@ -415,7 +415,7 @@ func TestNightHunterShotTargetGetsGroupLastWordsBeforeDay(t *testing.T) {
 
 func TestHunterMayShootBeforeParityVictory(t *testing.T) {
 	g := gameWithRoles(t, roleWolf, roleHunter, roleVillager, roleVillager)
-	g.Phase, g.Votes = phaseVoting, map[int64]int64{}
+	g.beginVoting()
 	votes := [][2]int64{{1, 2}, {2, 1}, {3, 2}, {4, 2}}
 	var result voteResult
 	for _, v := range votes {

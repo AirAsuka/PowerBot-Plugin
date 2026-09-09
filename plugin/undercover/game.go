@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	votingTimeout          = 3 * time.Minute
 	minPlayers             = 3
 	maxPlayers             = 12
 	maxClueRunes           = 80
@@ -18,6 +19,7 @@ const (
 )
 
 var (
+	errVoteIgnored      = errors.New("投票已截止或当前不接受投票")
 	errRoomExists       = errors.New("本群已经有谁是卧底房间了")
 	errRoomNotFound     = errors.New("本群还没有谁是卧底房间，请先发送“创建卧底”")
 	errGameStarted      = errors.New("游戏已经开始，无法加入或退出")
@@ -27,7 +29,6 @@ var (
 	errRoomFull         = errors.New("房间已满，最多支持12人")
 	errNotEnoughPlayers = errors.New("至少需要3名玩家才能开始")
 	errNotDescribing    = errors.New("现在不是描述阶段")
-	errNotVoting        = errors.New("现在不是投票阶段")
 	errNotNight         = errors.New("现在不是夜晚行动阶段")
 	errNoNightAction    = errors.New("你本夜没有行动资格")
 	errNightActionUsed  = errors.New("你本夜已经行动过了")
@@ -176,6 +177,7 @@ type game struct {
 	RoundClues          []clueRecord
 	ClueHistory         []clueArchive
 	Votes               map[int64]int64
+	VoteDeadline        time.Time
 	VoteTargets         map[int64]struct{}
 	NightActions        map[int64]int64 // 0 表示主动选择“不刀”
 	BlankActed          bool            // 白板本夜已经猜词或主动放弃
@@ -415,6 +417,7 @@ func (g *game) advanceDescription() (next int64, voting bool, err error) {
 	g.DescriptionTurns++
 	if g.DescriptionTurns == len(g.Order) {
 		g.Phase = phaseVoting
+		g.VoteDeadline = time.Now().Add(votingTimeout)
 		g.Turn = 0
 		g.DescriptionDeadline = time.Time{}
 		g.Votes = make(map[int64]int64)
@@ -433,8 +436,8 @@ func (g *game) startDescriptionTimer() {
 
 func (g *game) vote(voter, target int64) (voteResult, error) {
 	result := voteResult{VotesNeeded: len(g.Order)}
-	if g.Phase != phaseVoting {
-		return result, errNotVoting
+	if !g.acceptsVote(time.Now()) {
+		return result, errVoteIgnored
 	}
 	voterPlayer, ok := g.Players[voter]
 	if !ok {
@@ -466,6 +469,12 @@ func (g *game) vote(voter, target int64) (voteResult, error) {
 		return result, nil
 	}
 
+	return g.resolveVoting(result)
+}
+
+func (g *game) resolveVoting(result voteResult) (voteResult, error) {
+	g.VoteDeadline = time.Time{}
+	g.touch()
 	counts := make(map[int64]int)
 	maxVotes := 0
 	for _, votedID := range g.Votes {
@@ -492,6 +501,7 @@ func (g *game) vote(voter, target int64) (voteResult, error) {
 		}
 	}
 	if len(result.Tie) > 1 {
+		g.VoteDeadline = time.Now().Add(votingTimeout)
 		g.Votes = make(map[int64]int64)
 		g.VoteTargets = make(map[int64]struct{}, len(result.Tie))
 		for _, id := range result.Tie {

@@ -26,7 +26,7 @@ const helpText = `狼人杀（6—12人，机器人主持）
 2. 其他玩家发送“加入狼人杀”
 3. 房主发送“开始狼人杀”，机器人私聊身份
 4. 夜晚按私聊提示行动；白天依次发送“狼人杀发言 内容”
-5. 发言结束后发送“狼人杀投票 @玩家”或“狼人杀投票 弃票”
+5. 发言结束后发送“狼人杀投票 @玩家”或“狼人杀投票 弃票”（限时3分钟，超时未投视为弃票）
 
 其他指令：狼人杀玩家、狼人杀状态、退出狼人杀、结束狼人杀
 房主可发送“狼人杀开始投票”跳过剩余发言。
@@ -211,10 +211,11 @@ func handleSpeech(ctx *zero.Ctx) {
 		return
 	}
 	if voting {
+		scheduleVotingTimeout(ctx, room)
 		if sendSpeechArchives(ctx, ctx.Event.GroupID, archives) {
 			markVoteSummarySent(ctx.Event.GroupID, room)
 		}
-		ctx.SendChain(message.Text("所有存活玩家发言完毕，进入放逐投票。请发送“狼人杀投票 @玩家”或“狼人杀投票 弃票”，可在全员投完前改票。"))
+		ctx.SendChain(message.Text("所有存活玩家发言完毕，进入放逐投票（限时3分钟，超时未投视为弃票）。请发送“狼人杀投票 @玩家”或“狼人杀投票 弃票”，可在全员投完前改票。"))
 		return
 	}
 	ctx.SendChain(message.Text("发言已记录，下一位请 "), message.At(next), message.Text(" 发言。"))
@@ -235,10 +236,11 @@ func skipToVote(ctx *zero.Ctx) {
 		sendError(ctx, err)
 		return
 	}
+	scheduleVotingTimeout(ctx, room)
 	if sendSpeechArchives(ctx, ctx.Event.GroupID, archives) {
 		markVoteSummarySent(ctx.Event.GroupID, room)
 	}
-	ctx.SendChain(message.Text("已进入放逐投票，请发送“狼人杀投票 @玩家”或“狼人杀投票 弃票”。"))
+	ctx.SendChain(message.Text("已进入放逐投票（限时3分钟，超时未投视为弃票），请发送“狼人杀投票 @玩家”或“狼人杀投票 弃票”。"))
 }
 
 func handleExplosion(ctx *zero.Ctx) {
@@ -272,6 +274,15 @@ func handleExplosion(ctx *zero.Ctx) {
 }
 
 func handleVote(ctx *zero.Ctx) {
+	// Ignore closed ballots before parsing targets or sending any archive/reply.
+	accepting := false
+	_ = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+		accepting = g.acceptsVote(time.Now())
+		return nil
+	})
+	if !accepting {
+		return
+	}
 	matches := ctx.State["regex_matched"].([]string)
 	target := int64(0)
 	var err error
@@ -288,7 +299,7 @@ func handleVote(ctx *zero.Ctx) {
 	var pendingArchives []speechArchive
 	var pendingRoom *game
 	_ = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
-		if g.Phase == phaseVoting && !g.VoteSummarySent {
+		if g.acceptsVote(time.Now()) && !g.VoteSummarySent {
 			pendingRoom = g
 			pendingArchives = g.speechArchives(true)
 		}
@@ -298,15 +309,27 @@ func handleVote(ctx *zero.Ctx) {
 		markVoteSummarySent(ctx.Event.GroupID, pendingRoom)
 	}
 
+	processVote(ctx, target, nil, time.Time{})
+}
+
+// processVote shares settlement and announcements between player votes and the timer.
+func processVote(ctx *zero.Ctx, target int64, expected *game, deadline time.Time) {
 	var r voteResult
 	var room *game
 	var eliminated string
 	var ties []string
 	var archives []speechArchive
-	err = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
 		room = g
 		var e error
-		r, e = g.vote(ctx.Event.UserID, target)
+		if expected != nil {
+			if g != expected {
+				return errVoteIgnored
+			}
+			r, e = g.expireVoting(deadline, time.Now())
+		} else {
+			r, e = g.vote(ctx.Event.UserID, target)
+		}
 		if e != nil {
 			return e
 		}
@@ -322,8 +345,14 @@ func handleVote(ctx *zero.Ctx) {
 		return nil
 	})
 	if err != nil {
+		if expected != nil || err == errVoteIgnored || err == errRoomNotFound {
+			return
+		}
 		sendError(ctx, err)
 		return
+	}
+	if expected != nil {
+		ctx.SendChain(message.Text("投票限时3分钟已到，按已收到的票结算，未投票玩家视为弃票。"))
 	}
 	if !r.Complete {
 		word := "投票已记录"
@@ -339,10 +368,11 @@ func handleVote(ctx *zero.Ctx) {
 		return
 	}
 	if len(r.Tie) > 0 {
+		scheduleVotingTimeout(ctx, room)
 		if sendSpeechArchives(ctx, ctx.Event.GroupID, archives) {
 			markVoteSummarySent(ctx.Event.GroupID, room)
 		}
-		ctx.SendChain(message.Text("平票：", strings.Join(ties, "、"), "。请所有存活玩家重投，且只能投给以上候选人或弃票。"))
+		ctx.SendChain(message.Text("平票：", strings.Join(ties, "、"), "。请所有存活玩家重投（限时3分钟），且只能投给以上候选人或弃票。"))
 		return
 	}
 	if r.TieLimitReached {
@@ -351,7 +381,7 @@ func handleVote(ctx *zero.Ctx) {
 		return
 	}
 	if r.NoElimination {
-		ctx.SendChain(message.Text("所有玩家均已弃票，本轮无人被放逐。天黑请闭眼，狼人请查看私聊。"))
+		ctx.SendChain(message.Text("本轮无有效候选票，无人被放逐。天黑请闭眼，狼人请查看私聊。"))
 		promptWolves(ctx, ctx.Event.GroupID, room)
 		return
 	}

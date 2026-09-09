@@ -88,10 +88,11 @@ func forceDescriptionTimeout(groupID int64, expected *game, round int, playerID 
 
 func announceDescriptionTimeout(ctx *zero.Ctx, groupID int64, outcome descriptionTimeoutOutcome) {
 	if outcome.Voting {
+		scheduleVotingTimeout(ctx, outcome.Room)
 		sendClueArchives(ctx, groupID, outcome.Archives)
 		ctx.SendGroupMessage(groupID, message.Message{
 			message.At(outcome.SkippedID),
-			message.Text("（", outcome.SkippedName, "）2分钟内未描述，已自动跳过。\n本轮描述完毕，进入投票阶段。所有存活玩家请发送“卧底投票 @玩家”或“卧底投票 弃票”；可以改票，以最后一票为准。\n", outcome.VoteProgress),
+			message.Text("（", outcome.SkippedName, "）2分钟内未描述，已自动跳过。\n本轮描述完毕，进入投票阶段（限时3分钟，超时未投视为弃票）。所有存活玩家请发送“卧底投票 @玩家”或“卧底投票 弃票”；可以改票，以最后一票为准。\n", outcome.VoteProgress),
 		})
 		return
 	}
