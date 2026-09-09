@@ -197,7 +197,7 @@ func TestDescriptionTimeoutSkipsPlayerAndStillReachesVoting(t *testing.T) {
 	if !ok || voting || skipped != order[0] || next != order[1] {
 		t.Fatalf("first timeout: next=%d voting=%v skipped=%d ok=%v", next, voting, skipped, ok)
 	}
-	if g.DescriptionTurns != 1 || len(g.RoundClues) != 0 {
+	if g.DescriptionTurns != 1 || len(g.RoundClues) != 1 || !g.RoundClues[0].TimedOut {
 		t.Fatalf("first timeout recorded unexpected state: turns=%d clues=%v", g.DescriptionTurns, g.RoundClues)
 	}
 
@@ -214,8 +214,20 @@ func TestDescriptionTimeoutSkipsPlayerAndStillReachesVoting(t *testing.T) {
 	if next, voting, skipped, ok := g.skipDescription(g.Round, order[3]); !ok || !voting || next != 0 || skipped != order[3] {
 		t.Fatalf("last timeout: next=%d voting=%v skipped=%d ok=%v", next, voting, skipped, ok)
 	}
-	if g.Phase != phaseVoting || g.DescriptionTurns != len(order) || len(g.RoundClues) != 1 {
+	if g.Phase != phaseVoting || g.DescriptionTurns != len(order) || len(g.RoundClues) != len(order) {
 		t.Fatalf("final state: phase=%v turns=%d clues=%v", g.Phase, g.DescriptionTurns, g.RoundClues)
+	}
+	archives := g.clueArchives(true)
+	if len(archives) != 1 || len(archives[0].Clues) != len(order) {
+		t.Fatalf("unexpected archives: %+v", archives)
+	}
+	for i, clue := range archives[0].Clues {
+		if clue.PlayerID != order[i] || clue.PlayerName != g.Players[order[i]].Name || clue.TimedOut != (i != 1) {
+			t.Fatalf("archive record %d has wrong player or timeout state: %+v", i, clue)
+		}
+	}
+	if archives[0].Clues[1].Text != "正常描述" {
+		t.Fatalf("valid description lost: %+v", archives[0].Clues[1])
 	}
 }
 

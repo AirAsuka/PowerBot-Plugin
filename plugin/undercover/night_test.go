@@ -2,9 +2,39 @@ package undercover
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestClueArchiveNodesKeepTimeoutInPlayerOrder(t *testing.T) {
+	clues := []clueRecord{
+		{PlayerID: 1, PlayerName: "玩家1", Text: "第一条描述"},
+		{PlayerID: 2, PlayerName: "玩家2", TimedOut: true},
+		{PlayerID: 3, PlayerName: "玩家3", Text: "第三条描述"},
+	}
+	for _, fallback := range []bool{false, true} {
+		nodes := clueArchiveNodes(1, clues, 999, fallback)
+		if len(nodes) != 4 {
+			t.Fatalf("fallback=%v: got %d nodes, want 4", fallback, len(nodes))
+		}
+		timeout := nodes[2]
+		if timeout.Type != "node" || timeout.Data["uin"] != "999" || timeout.Data["name"] != "谁是卧底" ||
+			timeout.Data["content"] != "系统提示：玩家2（2）超时未进行发言描述，已自动跳过。" {
+			t.Fatalf("fallback=%v: incorrect timeout node: %+v", fallback, timeout)
+		}
+		for _, i := range []int{0, 2} {
+			node := nodes[i+1]
+			wantSender := strconv.FormatInt(clues[i].PlayerID, 10)
+			if fallback {
+				wantSender = "999"
+			}
+			if node.Data["uin"] != wantSender || !strings.Contains(node.Data["content"], clues[i].Text) {
+				t.Fatalf("fallback=%v: description %d has wrong sender or content: %+v", fallback, i, node)
+			}
+		}
+	}
+}
 
 func TestCaptureNightOutcomeIncludesAllDeadAndAlivePlayers(t *testing.T) {
 	g := makeStartedGame(t, 5)

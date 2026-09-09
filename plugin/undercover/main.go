@@ -24,6 +24,7 @@ const helpText = `谁是卧底（3—12人）
 其他指令：卧底玩家、卧底状态、退出卧底、结束卧底
 身份配置：5人起加入白板；7人起配置2狼；8人起加入天使。
 夜晚规则：投票后，普通拿词玩家私聊选择刀或不刀；狼刀人成功，【平民开刀会自杀！】白板每夜可猜两个词，全部猜中则白板单独获胜；天使没有夜间行动。
+白板出局：被投出后可在群内发送“卧底猜词 词语1 词语2”猜一次（顺序不限），限时2分钟，全部猜中则单独获胜；猜错、发送“卧底猜词 放弃”或超时后继续结算。
 胜负规则：所有狼出局则平民阵营胜；存活狼数达到其他存活人数时狼人阵营胜。
 提示：开局前请先私聊机器人任意消息，确保机器人能发词。
 
@@ -173,6 +174,7 @@ func init() {
 
 	registerWordCommands()
 	registerNightCommands()
+	registerBlankLastGuessCommands()
 }
 
 func startGame(ctx *zero.Ctx) {
@@ -367,6 +369,13 @@ func processVote(ctx *zero.Ctx, target int64, expected *game, deadline time.Time
 		startNight(ctx, ctx.Event.GroupID, room, result.NightActors)
 		return
 	}
+	if result.BlankLastGuess {
+		scheduleBlankLastGuessTimeout(ctx, room)
+		ctx.SendChain(message.At(result.Eliminated.ID), message.Text(
+			"（", eliminatedName, "）被投出，身份是白板。\n你有一次在本群猜词的机会（限时2分钟）：卧底猜词 词语1 词语2（顺序不限）。\n同时猜中平民词和狼人词即可单独获胜；猜错、发送“卧底猜词 放弃”或超时后继续结算。",
+		))
+		return
+	}
 	if result.Winner != "" {
 		rooms.removeIfSame(ctx.Event.GroupID, room)
 		ctx.SendChain(message.Text(
@@ -416,6 +425,9 @@ func handleStatus(ctx *zero.Ctx) {
 		}
 		if g.Phase == phaseNight {
 			fmt.Fprintf(&b, "\n夜间行动进度：%d/%d", g.nightActionsCast(), g.nightActionsNeeded())
+		}
+		if g.Phase == phaseBlankLastGuess {
+			fmt.Fprintf(&b, "\n等待被投出的白板%s在群内猜词（限时2分钟）：卧底猜词 词语1 词语2；或发送“卧底猜词 放弃”。", g.Players[g.BlankID].Name)
 		}
 		text = b.String()
 		return nil

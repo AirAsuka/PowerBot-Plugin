@@ -402,33 +402,39 @@ func sendClueArchive(ctx *zero.Ctx, groupID int64, round int, clues []clueRecord
 	if round <= 0 || len(clues) == 0 {
 		return
 	}
-	nodes := make(message.Message, 0, len(clues)+1)
-	nodes = append(nodes, message.CustomNode("谁是卧底", ctx.Event.SelfID, fmt.Sprintf("第%d轮发言记录", round)))
-	for _, clue := range clues {
-		nodes = append(nodes, message.CustomNode(clue.PlayerName, clue.PlayerID, clue.Text))
-	}
+	nodes := clueArchiveNodes(round, clues, ctx.Event.SelfID, false)
 	if ctx.SendGroupForwardMessage(groupID, nodes).Get("message_id").Int() != 0 {
 		return
 	}
 
-	fallback := make(message.Message, 0, len(clues)+1)
-	fallback = append(fallback, message.CustomNode("谁是卧底", ctx.Event.SelfID, fmt.Sprintf("第%d轮发言记录", round)))
-	for _, clue := range clues {
-		fallback = append(fallback, message.CustomNode(
-			"谁是卧底",
-			ctx.Event.SelfID,
-			fmt.Sprintf("%s（%d）：%s", clue.PlayerName, clue.PlayerID, clue.Text),
-		))
-	}
+	fallback := clueArchiveNodes(round, clues, ctx.Event.SelfID, true)
 	if ctx.SendGroupForwardMessage(groupID, fallback).Get("message_id").Int() == 0 {
 		ctx.SendGroupMessage(groupID, message.Text("第", round, "轮发言记录发送失败，请稍后通过“卧底状态”确认游戏进度。"))
 	}
 }
 
+func clueArchiveNodes(round int, clues []clueRecord, botID int64, fallback bool) message.Message {
+	nodes := make(message.Message, 0, len(clues)+1)
+	nodes = append(nodes, message.CustomNode("谁是卧底", botID, fmt.Sprintf("第%d轮发言记录", round)))
+	for _, clue := range clues {
+		switch {
+		case clue.TimedOut:
+			nodes = append(nodes, message.CustomNode("谁是卧底", botID,
+				fmt.Sprintf("系统提示：%s（%d）超时未进行发言描述，已自动跳过。", clue.PlayerName, clue.PlayerID)))
+		case fallback:
+			nodes = append(nodes, message.CustomNode("谁是卧底", botID,
+				fmt.Sprintf("%s（%d）：%s", clue.PlayerName, clue.PlayerID, clue.Text)))
+		default:
+			nodes = append(nodes, message.CustomNode(clue.PlayerName, clue.PlayerID, clue.Text))
+		}
+	}
+	return nodes
+}
+
 func secretText(item secret) string {
 	switch item.Role {
 	case roleBlank:
-		return "【谁是卧底】游戏已开始\n你的身份是：白板\n你没有词语，请根据其他人的描述隐藏身份。每轮夜晚你有一次机会猜出平民词和狼人词，两词全部正确即可单独获胜。\n回到群内，轮到你时发送：卧底描述 你的描述"
+		return "【谁是卧底】游戏已开始\n你的身份是：白板\n你没有词语，请根据其他人的描述隐藏身份。每轮夜晚你有一次机会猜出平民词和狼人词，两词全部正确即可单独获胜。被投出时，你还有一次在群内猜词的机会（限时2分钟），发送：卧底猜词 词语1 词语2；或发送“卧底猜词 放弃”。\n回到群内，轮到你时发送：卧底描述 你的描述"
 	case roleAngel:
 		return fmt.Sprintf("【谁是卧底】游戏已开始\n你的身份是：天使\n你看到的两个词是：%s / %s\n你不知道哪个属于平民、哪个属于狼人；你没有夜间刀人行动。\n回到群内，轮到你时发送：卧底描述 你的描述", item.Words[0], item.Words[1])
 	default:
