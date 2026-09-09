@@ -684,13 +684,14 @@ func TestWordPairsAreUsableAndUnique(t *testing.T) {
 		if pair.Civilian == "" || pair.Undercover == "" || pair.Civilian == pair.Undercover {
 			t.Fatalf("invalid pair at %d: %+v", i, pair)
 		}
-		key := pair.Civilian + "\x00" + pair.Undercover
-		reverse := pair.Undercover + "\x00" + pair.Civilian
+		for _, word := range []string{pair.Civilian, pair.Undercover} {
+			if err := validateWord(word); err != nil {
+				t.Fatalf("invalid builtin word %q: %v", word, err)
+			}
+		}
+		key := canonicalPairKey(pair.Civilian, pair.Undercover)
 		if _, ok := seen[key]; ok {
 			t.Fatalf("duplicate pair: %+v", pair)
-		}
-		if _, ok := seen[reverse]; ok {
-			t.Fatalf("reverse duplicate pair: %+v", pair)
 		}
 		seen[key] = struct{}{}
 	}

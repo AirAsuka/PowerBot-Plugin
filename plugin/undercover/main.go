@@ -176,16 +176,7 @@ func init() {
 }
 
 func startGame(ctx *zero.Ctx) {
-	if err := rooms.canBegin(ctx.Event.GroupID, ctx.Event.UserID); err != nil {
-		sendError(ctx, err)
-		return
-	}
-	pair, err := wordDB.randomPair()
-	if err != nil {
-		sendError(ctx, err)
-		return
-	}
-	g, secrets, err := rooms.begin(ctx.Event.GroupID, ctx.Event.UserID, pair)
+	g, secrets, err := rooms.begin(ctx.Event.GroupID, ctx.Event.UserID, wordDB.randomPair)
 	if err != nil {
 		sendError(ctx, err)
 		return

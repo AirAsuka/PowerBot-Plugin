@@ -74,6 +74,9 @@ func registerWordCommands() {
 				if row.Enabled == 0 {
 					status = "禁用"
 				}
+				if row.UseCount > 0 {
+					status = "已使用（软删除）"
+				}
 				fmt.Fprintf(&b, "#%d %s / %s｜%s｜难度%d｜%s｜抽取%d次\n",
 					row.ID, row.WordA, row.WordB, row.Category, row.Difficulty, status, row.UseCount)
 			}
@@ -88,7 +91,7 @@ func registerWordCommands() {
 				return
 			}
 			var b strings.Builder
-			fmt.Fprintf(&b, "卧底词库：共%d条，启用%d条，禁用%d条\n", total, enabled, total-enabled)
+			fmt.Fprintf(&b, "卧底词库：共%d条，可用%d条，禁用或已使用%d条\n", total, enabled, total-enabled)
 			for _, stat := range stats {
 				fmt.Fprintf(&b, "%s：%d/%d条启用\n", stat.Category, stat.Enabled, stat.Total)
 			}
