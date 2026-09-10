@@ -24,18 +24,26 @@ func gameWithRoles(t *testing.T, roles ...role) *game {
 }
 
 func TestRoleCounts(t *testing.T) {
-	wantWolves := map[int]int{6: 2, 7: 2, 8: 3, 9: 3, 10: 3, 11: 3, 12: 4}
-	for n := minPlayers; n <= maxPlayers; n++ {
-		counts := roleCounts(n)
-		total := 0
-		for _, count := range counts {
-			total += count
+	expected := map[int]map[role]int{
+		8:  {roleWolf: 3, roleVillager: 2, roleSeer: 1, roleGuard: 1, roleKnight: 1},
+		9:  {roleWolf: 3, roleVillager: 3, roleSeer: 1, roleWitch: 1, roleHunter: 1},
+		10: {roleWolf: 3, roleVillager: 4, roleSeer: 1, roleWitch: 1, roleHunter: 1},
+		12: {roleWolf: 4, roleVillager: 4, roleSeer: 1, roleWitch: 1, roleHunter: 1, roleIdiot: 1},
+	}
+	for n, want := range expected {
+		got := roleCounts(n)
+		if len(got) != len(want) {
+			t.Fatalf("n=%d got=%v want=%v", n, got, want)
 		}
-		if total != n || counts[roleWolf] != wantWolves[n] || counts[roleSeer] != 1 {
-			t.Fatalf("%d players: %v", n, counts)
+		for r, c := range want {
+			if got[r] != c {
+				t.Fatalf("n=%d got=%v want=%v", n, got, want)
+			}
 		}
-		if counts[roleHunter] != 1 || (n >= 7) != (counts[roleWitch] == 1) {
-			t.Fatalf("%d players: hunter count %d", n, counts[roleHunter])
+	}
+	for _, n := range []int{-1, 0, 6, 7, 11, 13} {
+		if roleCounts(n) != nil {
+			t.Fatalf("accepted unsupported count %d", n)
 		}
 	}
 }
@@ -64,7 +72,7 @@ func TestFormatRoundPlayersShowsNoDeathsAtFirstRound(t *testing.T) {
 }
 
 func TestBeginCreatesConfiguredRoles(t *testing.T) {
-	for n := minPlayers; n <= maxPlayers; n++ {
+	for _, n := range []int{8, 9, 10, 12} {
 		g := newGame(1, "玩家1")
 		for i := 2; i <= n; i++ {
 			if err := g.join(int64(i), fmt.Sprintf("玩家%d", i)); err != nil {
@@ -637,24 +645,18 @@ func TestWolfExplosionEndsDayAndStartsNextNight(t *testing.T) {
 	}
 }
 
-func TestWolfExplosionDiscardsVoting(t *testing.T) {
+func TestWolfCannotExplodeDuringVoting(t *testing.T) {
 	g := gameWithRoles(t, roleWolf, roleWolf, roleSeer, roleWitch, roleVillager, roleVillager)
 	g.startDay(nil)
 	g.beginVoting()
 	if _, err := g.vote(3, 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := g.explode(2); err != nil {
-		t.Fatal(err)
+	if _, err := g.explode(2); err == nil {
+		t.Fatal("explosion accepted during voting")
 	}
-	if g.Phase != phaseDayLastWords {
-		t.Fatalf("phase=%v, want daytime last words", g.Phase)
-	}
-	if _, err := g.submitDayLastWords(2, "放弃"); err != nil {
-		t.Fatal(err)
-	}
-	if g.Phase != phaseNightWolf || len(g.Votes) != 0 || len(g.VoteTargets) != 0 {
-		t.Fatalf("phase=%v votes=%v targets=%v", g.Phase, g.Votes, g.VoteTargets)
+	if g.Phase != phaseVoting || !g.Players[2].Alive || g.Votes[3] != 1 {
+		t.Fatal("rejected explosion mutated ballot")
 	}
 }
 

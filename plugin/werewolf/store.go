@@ -118,7 +118,7 @@ func (s *roomStore) pendingWolfBroadcasts(userID int64) []int64 {
 			continue
 		}
 		p := g.Players[userID]
-		if p != nil && p.Alive && p.Role == roleWolf {
+		if p != nil && p.Alive && g.canBroadcast(userID) {
 			out = append(out, gid)
 		}
 	}

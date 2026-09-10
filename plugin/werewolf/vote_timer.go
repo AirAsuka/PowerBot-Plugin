@@ -15,14 +15,18 @@ func (g *game) expireVoting(deadline, now time.Time) (voteResult, error) {
 	if g.Phase != phaseVoting || deadline.IsZero() || !g.VoteDeadline.Equal(deadline) || now.Before(deadline) {
 		return voteResult{}, errVoteIgnored
 	}
-	result := voteResult{Cast: len(g.Votes), Needed: len(g.aliveIDs())}
+	result := voteResult{Cast: len(g.Votes), Needed: len(g.voterIDs())}
 	result.Voted, result.Pending = g.voteProgress()
 	return g.resolveVoting(result)
 }
 
 func scheduleVotingTimeout(ctx *zero.Ctx, expected *game) {
+	scheduleVotingTimeoutForGroup(ctx, ctx.Event.GroupID, expected)
+}
+
+func scheduleVotingTimeoutForGroup(ctx *zero.Ctx, gid int64, expected *game) {
 	var deadline time.Time
-	_ = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+	_ = rooms.withRoom(gid, func(g *game) error {
 		if g == expected && g.Phase == phaseVoting {
 			deadline = g.VoteDeadline
 		}
@@ -32,6 +36,6 @@ func scheduleVotingTimeout(ctx *zero.Ctx, expected *game) {
 		return
 	}
 	time.AfterFunc(time.Until(deadline), func() {
-		processVote(ctx, 0, expected, deadline)
+		processVoteInGroup(ctx, gid, 0, expected, deadline)
 	})
 }
