@@ -5,11 +5,11 @@ import (
 	"strconv"
 )
 
-const votePattern = `^卧底投票\s*(?:\[CQ:at,(?:[^\]]*,)?qq=(\d+)(?:,[^\]]*)?\]|(\d+))\s*$`
+const votePattern = `^卧底投票\s*(?:弃票|\[CQ:at,(?:[^\]]*,)?qq=(\d+)(?:,[^\]]*)?\]|(\d+))\s*$`
 
 const nightActionPattern = `^卧底刀人\s+(?:不刀|(\d+)(?:\s+(\d+))?)\s*$`
 
-const blankGuessPattern = `^卧底猜词\s+(?:(\d+)\s+)?([^|｜]+)[|｜]([^|｜]+)\s*$`
+const blankGuessPattern = `^卧底猜词\s+(?:(\d+)\s+)?(\S+)\s+(\S+)\s*$`
 
 func voteTarget(matches []string) (int64, error) {
 	if len(matches) < 3 {
@@ -18,6 +18,9 @@ func voteTarget(matches []string) (int64, error) {
 	target := matches[1]
 	if target == "" {
 		target = matches[2]
+	}
+	if target == "" {
+		return 0, nil
 	}
 	id, err := strconv.ParseInt(target, 10, 64)
 	if err != nil || id <= 0 {

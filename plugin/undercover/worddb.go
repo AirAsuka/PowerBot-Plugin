@@ -83,6 +83,10 @@ func (l *wordLibrary) initializeLocked() error {
 	if _, err := l.db.Exec(`CREATE INDEX IF NOT EXISTS idx_undercover_words_usage ON undercover_words(use_count)`); err != nil {
 		return fmt.Errorf("创建词库索引失败: %w", err)
 	}
+	// 兼容旧库：曾经抽取过的词条也永久退出词池，保留原有次数。
+	if _, err := l.db.Exec(`UPDATE undercover_words SET enabled = 0 WHERE use_count > 0 AND enabled = 1`); err != nil {
+		return fmt.Errorf("停用历史已用词条失败: %w", err)
+	}
 	now := time.Now().Unix()
 	for _, group := range builtinWordGroups {
 		for _, pair := range group.Pairs {
@@ -106,17 +110,17 @@ func (l *wordLibrary) randomPair() (wordPair, error) {
 		return wordPair{}, err
 	}
 	var row wordRecord
-	err := l.db.Query(`SELECT id, word_a, word_b, pair_key, category, difficulty,
-		enabled, use_count, created_by, created_at
-		FROM undercover_words WHERE enabled = 1 ORDER BY RANDOM() LIMIT 1`, &row)
+	// 抽取与软删除在同一条语句中完成，发词前落库，避免并发重复取词。
+	err := l.db.Query(`UPDATE undercover_words SET enabled = 0, use_count = use_count + 1
+		WHERE id = (SELECT id FROM undercover_words
+			WHERE enabled = 1 AND use_count = 0 ORDER BY RANDOM() LIMIT 1)
+		RETURNING id, word_a, word_b, pair_key, category, difficulty,
+			enabled, use_count, created_by, created_at`, &row)
 	if errors.Is(err, sqlite.ErrNullResult) {
-		return wordPair{}, errors.New("词库中没有可用词条，请管理员先添加或启用词条")
+		return wordPair{}, errors.New("词库中没有未使用的可用词条，请管理员添加新词或启用未使用的词条")
 	}
 	if err != nil {
 		return wordPair{}, fmt.Errorf("抽取词条失败: %w", err)
-	}
-	if _, err := l.db.Exec(`UPDATE undercover_words SET use_count = use_count + 1 WHERE id = ?`, row.ID); err != nil {
-		return wordPair{}, fmt.Errorf("更新词条使用次数失败: %w", err)
 	}
 	return wordPair{Civilian: row.WordA, Undercover: row.WordB}, nil
 }
@@ -184,7 +188,7 @@ func (l *wordLibrary) setEnabled(id int64, enabled bool) error {
 	if enabled {
 		value = 1
 	}
-	result, err := l.db.Exec(`UPDATE undercover_words SET enabled = ? WHERE id = ?`, value, id)
+	result, err := l.db.Exec(`UPDATE undercover_words SET enabled = ? WHERE id = ? AND (? = 0 OR use_count = 0)`, value, id, value)
 	if err != nil {
 		return fmt.Errorf("更新词条失败: %w", err)
 	}
@@ -193,6 +197,14 @@ func (l *wordLibrary) setEnabled(id int64, enabled bool) error {
 		return fmt.Errorf("读取更新结果失败: %w", err)
 	}
 	if changed == 0 {
+		var existing struct{ UseCount int64 }
+		err := l.db.Query(`SELECT use_count FROM undercover_words WHERE id = ?`, &existing, id)
+		if err == nil && existing.UseCount > 0 && enabled {
+			return errors.New("该词条已使用并软删除，不能重新启用，请添加新词对")
+		}
+		if err != nil && !errors.Is(err, sqlite.ErrNullResult) {
+			return fmt.Errorf("检查词条状态失败: %w", err)
+		}
 		return fmt.Errorf("没有找到ID为%d的词条", id)
 	}
 	return nil

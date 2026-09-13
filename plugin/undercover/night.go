@@ -26,8 +26,7 @@ type nightOutcome struct {
 	DeadPlayers  []namedElimination
 	AlivePlayers []string
 	NextName     string
-	ClueRound    int
-	Clues        []clueRecord
+	Archives     []clueArchive
 	FinalSummary string
 	Room         *game
 }
@@ -182,7 +181,7 @@ func blankGroupID(userID int64, input string) (int64, error) {
 	case 1:
 		return groups[0], nil
 	default:
-		return 0, errors.New("你在多个群有白板猜词机会，请使用“卧底猜词 群号 词语1|词语2”")
+		return 0, errors.New("你在多个群有白板猜词机会，请使用“卧底猜词 群号 词语1 词语2”")
 	}
 }
 
@@ -210,7 +209,7 @@ func startNight(ctx *zero.Ctx, groupID int64, expected *game, actors []int64) {
 		if g.blankCanGuess() {
 			blankID = g.BlankID
 			blankPrompt = fmt.Sprintf(
-				"【谁是卧底】第%d轮夜晚\n你是白板，本夜有一次猜词机会。\n猜词：卧底猜词 词语1|词语2（两个词顺序不限）\n放弃：卧底猜词 放弃\n同时猜中平民词和狼人词，你将立即获胜；猜错后本夜不能重猜。",
+				"【谁是卧底】第%d轮夜晚\n你是白板，本夜有一次猜词机会。\n猜词：卧底猜词 词语1 词语2（两个词顺序不限）\n放弃：卧底猜词 放弃\n同时猜中平民词和狼人词，你将立即获胜；猜错后本夜不能重猜。",
 				g.Round)
 		}
 		return nil
@@ -322,8 +321,7 @@ func captureNightOutcome(g *game, outcome *nightOutcome) {
 	if outcome.Result.NextDescriber != 0 {
 		outcome.NextName = g.Players[outcome.Result.NextDescriber].Name
 	}
-	outcome.ClueRound = outcome.Result.ClueRound
-	outcome.Clues = append([]clueRecord(nil), outcome.Result.Clues...)
+	outcome.Archives = g.clueArchives(false)
 	if outcome.Result.Winner != "" {
 		outcome.FinalSummary = revealSummary(g, outcome.Result.Reveal)
 	}
@@ -356,15 +354,16 @@ func announceNight(ctx *zero.Ctx, groupID int64, outcome nightOutcome) {
 		ctx.SendGroupMessage(groupID, message.Text(b.String()))
 		return
 	}
-	sendClueArchive(ctx, groupID, outcome.ClueRound, outcome.Clues)
+	sendClueArchives(ctx, groupID, outcome.Archives)
 	b.WriteString("\n")
 	b.WriteString(formatRoundPlayers(outcome.DeadPlayers, outcome.AlivePlayers))
 	b.WriteString("\n进入下一轮，请 ")
 	ctx.SendGroupMessage(groupID, message.Message{
 		message.Text(b.String()),
 		message.At(outcome.Result.NextDescriber),
-		message.Text("（", outcome.NextName, "）先描述。"),
+		message.Text("（", outcome.NextName, "）先描述（限时2分钟）。"),
 	})
+	scheduleCurrentDescriptionTimeout(ctx, groupID, outcome.Room)
 }
 
 func formatRoundPlayers(dead []namedElimination, alive []string) string {
@@ -389,40 +388,53 @@ func formatRoundPlayers(dead []namedElimination, alive []string) string {
 	return b.String()
 }
 
-// sendClueArchive 在第 2 轮及以后开始前，把上一轮描述复刻为合并转发记录。
+// sendClueArchives 按轮次依次把整局已有描述复刻为独立的合并转发记录。
+func sendClueArchives(ctx *zero.Ctx, groupID int64, archives []clueArchive) {
+	for _, archive := range archives {
+		sendClueArchive(ctx, groupID, archive.Round, archive.Clues)
+	}
+}
+
+// sendClueArchive 把一轮描述复刻为合并转发记录。
 // 优先使用原玩家昵称和 QQ 作为节点发送者；平台不允许伪造其他发送者时，
 // 再由机器人作为统一发送者复刻一遍，确保记录仍能发出。
 func sendClueArchive(ctx *zero.Ctx, groupID int64, round int, clues []clueRecord) {
 	if round <= 0 || len(clues) == 0 {
 		return
 	}
-	nodes := make(message.Message, 0, len(clues)+1)
-	nodes = append(nodes, message.CustomNode("谁是卧底", ctx.Event.SelfID, fmt.Sprintf("第%d轮发言记录", round)))
-	for _, clue := range clues {
-		nodes = append(nodes, message.CustomNode(clue.PlayerName, clue.PlayerID, clue.Text))
-	}
+	nodes := clueArchiveNodes(round, clues, ctx.Event.SelfID, false)
 	if ctx.SendGroupForwardMessage(groupID, nodes).Get("message_id").Int() != 0 {
 		return
 	}
 
-	fallback := make(message.Message, 0, len(clues)+1)
-	fallback = append(fallback, message.CustomNode("谁是卧底", ctx.Event.SelfID, fmt.Sprintf("第%d轮发言记录", round)))
-	for _, clue := range clues {
-		fallback = append(fallback, message.CustomNode(
-			"谁是卧底",
-			ctx.Event.SelfID,
-			fmt.Sprintf("%s（%d）：%s", clue.PlayerName, clue.PlayerID, clue.Text),
-		))
-	}
+	fallback := clueArchiveNodes(round, clues, ctx.Event.SelfID, true)
 	if ctx.SendGroupForwardMessage(groupID, fallback).Get("message_id").Int() == 0 {
 		ctx.SendGroupMessage(groupID, message.Text("第", round, "轮发言记录发送失败，请稍后通过“卧底状态”确认游戏进度。"))
 	}
 }
 
+func clueArchiveNodes(round int, clues []clueRecord, botID int64, fallback bool) message.Message {
+	nodes := make(message.Message, 0, len(clues)+1)
+	nodes = append(nodes, message.CustomNode("谁是卧底", botID, fmt.Sprintf("第%d轮发言记录", round)))
+	for _, clue := range clues {
+		switch {
+		case clue.TimedOut:
+			nodes = append(nodes, message.CustomNode("谁是卧底", botID,
+				fmt.Sprintf("系统提示：%s（%d）超时未进行发言描述，已自动跳过。", clue.PlayerName, clue.PlayerID)))
+		case fallback:
+			nodes = append(nodes, message.CustomNode("谁是卧底", botID,
+				fmt.Sprintf("%s（%d）：%s", clue.PlayerName, clue.PlayerID, clue.Text)))
+		default:
+			nodes = append(nodes, message.CustomNode(clue.PlayerName, clue.PlayerID, clue.Text))
+		}
+	}
+	return nodes
+}
+
 func secretText(item secret) string {
 	switch item.Role {
 	case roleBlank:
-		return "【谁是卧底】游戏已开始\n你的身份是：白板\n你没有词语，请根据其他人的描述隐藏身份。每轮夜晚你有一次机会猜出平民词和狼人词，两词全部正确即可单独获胜。\n回到群内，轮到你时发送：卧底描述 你的描述"
+		return "【谁是卧底】游戏已开始\n你的身份是：白板\n你没有词语，请根据其他人的描述隐藏身份。每轮夜晚你有一次机会猜出平民词和狼人词，两词全部正确即可单独获胜。被投出时，你还有一次在群内猜词的机会（限时2分钟），发送：卧底猜词 词语1 词语2；或发送“卧底猜词 放弃”。\n回到群内，轮到你时发送：卧底描述 你的描述"
 	case roleAngel:
 		return fmt.Sprintf("【谁是卧底】游戏已开始\n你的身份是：天使\n你看到的两个词是：%s / %s\n你不知道哪个属于平民、哪个属于狼人；你没有夜间刀人行动。\n回到群内，轮到你时发送：卧底描述 你的描述", item.Words[0], item.Words[1])
 	default:
@@ -434,6 +446,8 @@ func roleSetupText(playerCount int) string {
 	switch {
 	case playerCount >= 8:
 		return "本局配置：2狼、1白板、1天使，其余为平民。"
+	case playerCount >= 7:
+		return "本局配置：2狼、1白板，其余为平民。"
 	case playerCount >= 5:
 		return "本局配置：1狼、1白板，其余为平民。"
 	default:

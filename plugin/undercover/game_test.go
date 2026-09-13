@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -45,7 +46,8 @@ func TestRoleSetupByPlayerCount(t *testing.T) {
 	}{
 		{3, 1, 0, 0},
 		{5, 1, 1, 0},
-		{7, 1, 1, 0},
+		{6, 1, 1, 0},
+		{7, 2, 1, 0},
 		{8, 2, 1, 1},
 		{12, 2, 1, 1},
 	}
@@ -140,6 +142,107 @@ func TestDescriptionTurnAndSecretProtection(t *testing.T) {
 	}
 	if next, voting, err := g.describe(first, "一种日常可见的东西"); err != nil || voting || next != second {
 		t.Fatalf("next=%d voting=%v err=%v", next, voting, err)
+	}
+}
+
+func TestDescriptionRejectsVisibleWordCharacters(t *testing.T) {
+	tests := []struct {
+		name  string
+		words []string
+		clue  string
+	}{
+		{name: "whole word", words: []string{"牛奶"}, clue: "我喜欢牛奶"},
+		{name: "first character", words: []string{"牛奶"}, clue: "牛的产物"},
+		{name: "last character", words: []string{"牛奶"}, clue: "奶白色的饮品"},
+		{name: "angel first word", words: []string{"牛奶", "豆浆"}, clue: "奶白色的饮品"},
+		{name: "angel second word", words: []string{"牛奶", "豆浆"}, clue: "豆子做的"},
+		{name: "case insensitive", words: []string{"iPhone"}, clue: "PHONE"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			room := makeStartedGame(t, 3)
+			current := room.currentDescriber()
+			room.Players[current].Words = test.words
+			deadline := room.DescriptionDeadline
+			next, voting, err := room.describe(current, test.clue)
+			if err == nil || !strings.Contains(err.Error(), "请撤回") || !strings.Contains(err.Error(), "重新发送") {
+				t.Fatalf("expected withdrawal and retry reminder, got %v", err)
+			}
+			if next != current || voting || room.currentDescriber() != current || room.DescriptionTurns != 0 || len(room.RoundClues) != 0 || room.Phase != phaseDescribing || !room.DescriptionDeadline.Equal(deadline) {
+				t.Fatal("rejected description changed turn state")
+			}
+			if _, _, err := room.describe(current, "一种日常可见的东西"); err != nil {
+				t.Fatalf("safe retry rejected: %v", err)
+			}
+		})
+	}
+}
+
+func TestDescriptionAllowsCharactersOutsideVisibleWords(t *testing.T) {
+	for _, words := range [][]string{{"牛奶"}, nil} {
+		room := makeStartedGame(t, 3)
+		current := room.currentDescriber()
+		room.Players[current].Words = words
+		if _, _, err := room.describe(current, "豆浆"); err != nil {
+			t.Fatalf("words=%v: description rejected: %v", words, err)
+		}
+	}
+}
+
+func TestDescriptionTimeoutSkipsPlayerAndStillReachesVoting(t *testing.T) {
+	g := makeStartedGame(t, 4)
+	order := append([]int64(nil), g.Order...)
+
+	next, voting, skipped, ok := g.skipDescription(g.Round, order[0])
+	if !ok || voting || skipped != order[0] || next != order[1] {
+		t.Fatalf("first timeout: next=%d voting=%v skipped=%d ok=%v", next, voting, skipped, ok)
+	}
+	if g.DescriptionTurns != 1 || len(g.RoundClues) != 1 || !g.RoundClues[0].TimedOut {
+		t.Fatalf("first timeout recorded unexpected state: turns=%d clues=%v", g.DescriptionTurns, g.RoundClues)
+	}
+
+	if next, voting, err := g.describe(order[1], "正常描述"); err != nil || voting || next != order[2] {
+		t.Fatalf("description after timeout: next=%d voting=%v err=%v", next, voting, err)
+	}
+	if _, _, _, ok := g.skipDescription(g.Round, order[1]); ok {
+		t.Fatal("stale timeout skipped a later player")
+	}
+
+	if next, voting, _, ok := g.skipDescription(g.Round, order[2]); !ok || voting || next != order[3] {
+		t.Fatalf("third turn timeout: next=%d voting=%v ok=%v", next, voting, ok)
+	}
+	if next, voting, skipped, ok := g.skipDescription(g.Round, order[3]); !ok || !voting || next != 0 || skipped != order[3] {
+		t.Fatalf("last timeout: next=%d voting=%v skipped=%d ok=%v", next, voting, skipped, ok)
+	}
+	if g.Phase != phaseVoting || g.DescriptionTurns != len(order) || len(g.RoundClues) != len(order) {
+		t.Fatalf("final state: phase=%v turns=%d clues=%v", g.Phase, g.DescriptionTurns, g.RoundClues)
+	}
+	archives := g.clueArchives(true)
+	if len(archives) != 1 || len(archives[0].Clues) != len(order) {
+		t.Fatalf("unexpected archives: %+v", archives)
+	}
+	for i, clue := range archives[0].Clues {
+		if clue.PlayerID != order[i] || clue.PlayerName != g.Players[order[i]].Name || clue.TimedOut != (i != 1) {
+			t.Fatalf("archive record %d has wrong player or timeout state: %+v", i, clue)
+		}
+	}
+	if archives[0].Clues[1].Text != "正常描述" {
+		t.Fatalf("valid description lost: %+v", archives[0].Clues[1])
+	}
+}
+
+func TestDescriptionTimeoutRejectsWrongRoundOrPlayer(t *testing.T) {
+	g := makeStartedGame(t, 3)
+	current := g.currentDescriber()
+	if _, _, _, ok := g.skipDescription(g.Round+1, current); ok {
+		t.Fatal("timeout from a different round was accepted")
+	}
+	wrongPlayer := g.Order[1]
+	if _, _, _, ok := g.skipDescription(g.Round, wrongPlayer); ok {
+		t.Fatal("timeout for a non-current player was accepted")
+	}
+	if g.currentDescriber() != current || g.DescriptionTurns != 0 {
+		t.Fatalf("rejected timeout changed state: current=%d turns=%d", g.currentDescriber(), g.DescriptionTurns)
 	}
 }
 
@@ -239,7 +342,60 @@ func TestVoteResultTracksVotedAndPendingPlayers(t *testing.T) {
 	}
 }
 
-func TestNextRoundArchivesAndClearsPreviousClues(t *testing.T) {
+func TestAllPlayersMayAbstain(t *testing.T) {
+	g := makeStartedGame(t, 4)
+	finishDescriptions(t, g)
+
+	first := g.Order[0]
+	initialTarget := g.Order[1]
+	if _, err := g.vote(first, initialTarget); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := g.vote(first, 0)
+	if err != nil || !changed.Changed || g.Votes[first] != 0 {
+		t.Fatalf("changed=%+v votes=%v err=%v", changed, g.Votes, err)
+	}
+
+	var result voteResult
+	for _, voter := range g.Order[1:] {
+		result, err = g.vote(voter, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !result.Complete || !result.NoElimination || result.Eliminated.ID != 0 {
+		t.Fatalf("result=%+v", result)
+	}
+	if g.Phase != phaseNight {
+		t.Fatalf("phase=%v, want phaseNight", g.Phase)
+	}
+}
+
+func TestAbstentionsDoNotCountAsCandidateVotes(t *testing.T) {
+	g := makeStartedGame(t, 4)
+	finishDescriptions(t, g)
+	target := g.Order[0]
+	candidateVoteCast := false
+
+	var result voteResult
+	for _, voter := range g.Order {
+		choice := int64(0)
+		if voter != target && !candidateVoteCast {
+			choice = target
+			candidateVoteCast = true
+		}
+		var err error
+		result, err = g.vote(voter, choice)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if result.NoElimination || result.Eliminated.ID != target {
+		t.Fatalf("result=%+v, want player %d eliminated", result, target)
+	}
+}
+
+func TestNextRoundKeepsAllArchivedCluesAndClearsCurrentRound(t *testing.T) {
 	g := makeStartedGame(t, 5)
 	finishDescriptions(t, g)
 	want := append([]clueRecord(nil), g.RoundClues...)
@@ -256,16 +412,60 @@ func TestNextRoundArchivesAndClearsPreviousClues(t *testing.T) {
 	if result.Winner != "" {
 		t.Skip("random role assignment reached a terminal state")
 	}
-	if result.ClueRound != 1 || len(result.Clues) != len(want) {
-		t.Fatalf("archive round=%d clues=%v, want round=1 clues=%v", result.ClueRound, result.Clues, want)
+	archives := g.clueArchives(false)
+	if len(archives) != 1 || archives[0].Round != 1 || len(archives[0].Clues) != len(want) {
+		t.Fatalf("archives=%v, want one round-1 archive with clues=%v", archives, want)
 	}
 	for i := range want {
-		if result.Clues[i] != want[i] {
-			t.Fatalf("archive clue %d = %+v, want %+v", i, result.Clues[i], want[i])
+		if archives[0].Clues[i] != want[i] {
+			t.Fatalf("archive clue %d = %+v, want %+v", i, archives[0].Clues[i], want[i])
 		}
 	}
 	if len(g.RoundClues) != 0 {
 		t.Fatalf("current round still contains previous clues: %v", g.RoundClues)
+	}
+}
+
+func TestClueArchivesIncludeEveryPreviousRoundAndCurrentRound(t *testing.T) {
+	g := makeStartedGame(t, 5)
+	finishDescriptions(t, g)
+	firstRound := append([]clueRecord(nil), g.RoundClues...)
+
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	if result, err := g.resolveNight(true); err != nil || result.Winner != "" {
+		t.Fatalf("resolve first night: result=%+v err=%v", result, err)
+	}
+	finishDescriptions(t, g)
+	secondRound := append([]clueRecord(nil), g.RoundClues...)
+
+	archives := g.clueArchives(true)
+	if len(archives) != 2 {
+		t.Fatalf("got %d archives, want 2: %v", len(archives), archives)
+	}
+	if archives[0].Round != 1 || !slices.Equal(archives[0].Clues, firstRound) {
+		t.Fatalf("first archive = %+v, want round 1 clues %v", archives[0], firstRound)
+	}
+	if archives[1].Round != 2 || !slices.Equal(archives[1].Clues, secondRound) {
+		t.Fatalf("second archive = %+v, want round 2 clues %v", archives[1], secondRound)
+	}
+	if historical := g.clueArchives(false); len(historical) != 1 || historical[0].Round != 1 {
+		t.Fatalf("round-start archives = %v, want only completed round 1", historical)
+	}
+
+	archives[0].Clues[0].Text = "被外部修改"
+	if g.ClueHistory[0].Clues[0].Text == "被外部修改" {
+		t.Fatal("clueArchives returned storage owned by the game")
+	}
+
+	g.Phase = phaseNight
+	g.NightActions = make(map[int64]int64)
+	if result, err := g.resolveNight(true); err != nil || result.Winner != "" {
+		t.Fatalf("resolve second night: result=%+v err=%v", result, err)
+	}
+	thirdRoundArchives := g.clueArchives(false)
+	if len(thirdRoundArchives) != 2 || thirdRoundArchives[0].Round != 1 || thirdRoundArchives[1].Round != 2 {
+		t.Fatalf("third-round archives = %v, want rounds 1 and 2", thirdRoundArchives)
 	}
 }
 
@@ -496,13 +696,14 @@ func TestWordPairsAreUsableAndUnique(t *testing.T) {
 		if pair.Civilian == "" || pair.Undercover == "" || pair.Civilian == pair.Undercover {
 			t.Fatalf("invalid pair at %d: %+v", i, pair)
 		}
-		key := pair.Civilian + "\x00" + pair.Undercover
-		reverse := pair.Undercover + "\x00" + pair.Civilian
+		for _, word := range []string{pair.Civilian, pair.Undercover} {
+			if err := validateWord(word); err != nil {
+				t.Fatalf("invalid builtin word %q: %v", word, err)
+			}
+		}
+		key := canonicalPairKey(pair.Civilian, pair.Undercover)
 		if _, ok := seen[key]; ok {
 			t.Fatalf("duplicate pair: %+v", pair)
-		}
-		if _, ok := seen[reverse]; ok {
-			t.Fatalf("reverse duplicate pair: %+v", pair)
 		}
 		seen[key] = struct{}{}
 	}
@@ -517,6 +718,7 @@ func TestVotePattern(t *testing.T) {
 		{"卧底投票 [CQ:at,qq=123456]", 123456},
 		{"卧底投票[CQ:at,name=某人,qq=42]", 42},
 		{"卧底投票 98765", 98765},
+		{"卧底投票 弃票", 0},
 	}
 	for _, tt := range tests {
 		matches := re.FindStringSubmatch(tt.message)
@@ -549,15 +751,15 @@ func TestNightActionPattern(t *testing.T) {
 func TestBlankGuessPattern(t *testing.T) {
 	re := regexp.MustCompile(blankGuessPattern)
 	for _, input := range []string{
-		"卧底猜词 牛奶|豆浆",
-		"卧底猜词 牛奶｜豆浆",
-		"卧底猜词 987654321 牛奶|豆浆",
+		"卧底猜词 牛奶 豆浆",
+		"卧底猜词 牛奶   豆浆",
+		"卧底猜词 987654321 牛奶 豆浆",
 	} {
 		if !re.MatchString(input) {
 			t.Errorf("blank guess pattern rejected %q", input)
 		}
 	}
-	for _, input := range []string{"卧底猜词", "卧底猜词 放弃", "卧底猜词 牛奶"} {
+	for _, input := range []string{"卧底猜词", "卧底猜词 放弃", "卧底猜词 牛奶", "卧底猜词 牛奶|豆浆", "卧底猜词 牛奶｜豆浆"} {
 		if re.MatchString(input) {
 			t.Errorf("blank guess pattern accepted %q", input)
 		}

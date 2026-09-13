@@ -36,21 +36,23 @@ func (s *roomStore) withRoom(groupID int64, fn func(*game) error) error {
 	return fn(g)
 }
 
-func (s *roomStore) begin(groupID, requester int64, pair wordPair) (*game, []secret, error) {
+func (s *roomStore) begin(groupID, requester int64, drawPair func() (wordPair, error)) (*game, []secret, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	g := s.room(groupID)
 	if g == nil {
 		return nil, nil, errRoomNotFound
 	}
+	if err := g.canBegin(requester); err != nil {
+		return g, nil, err
+	}
+	// 校验、取词和进入发词阶段共用房间锁，避免重复开局请求消耗词条。
+	pair, err := drawPair()
+	if err != nil {
+		return g, nil, err
+	}
 	secrets, err := g.begin(requester, pair)
 	return g, secrets, err
-}
-
-func (s *roomStore) canBegin(groupID, requester int64) error {
-	return s.withRoom(groupID, func(g *game) error {
-		return g.canBegin(requester)
-	})
 }
 
 func (s *roomStore) finishDeal(groupID int64, expected *game, success bool) error {

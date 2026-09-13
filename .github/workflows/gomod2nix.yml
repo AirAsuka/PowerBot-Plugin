@@ -1,4 +1,8 @@
 name: 自动更新 nix 依赖
+
+env:
+  GOTOOLCHAIN: local
+
 on:
   push:
     branches:
@@ -18,12 +22,13 @@ jobs:
           nix_path: nixpkgs=channel:nixos-unstable
 
       - name: Set up Go
-        uses: actions/setup-go@master
+        uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: '1.24.2'
+          check-latest: false
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@master
+        uses: actions/checkout@v6
         with:
           ref: master
           fetch-depth: 0

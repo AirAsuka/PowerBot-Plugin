@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
@@ -17,12 +18,13 @@ const helpText = `谁是卧底（3—12人）
 1. 创建卧底（创建者自动加入）
 2. 其他玩家发送“加入卧底”
 3. 房主发送“开始卧底”，机器人会私聊每个人的词
-4. 按提示发送“卧底描述 你的描述”
-5. 描述结束后发送“卧底投票 @玩家”
+4. 按提示发送“卧底描述 你的描述”（每人限时2分钟，超时自动跳过）
+5. 描述结束后发送“卧底投票 @玩家”或“卧底投票 弃票”（限时3分钟，超时未投视为弃票）
 
 其他指令：卧底玩家、卧底状态、退出卧底、结束卧底
-身份配置：5人起加入白板；8人起配置2狼并加入天使。
-夜晚规则：投票后，普通拿词玩家私聊选择刀或不刀；狼刀人成功，平民开刀会自杀。白板每夜可猜两个词，全部猜中则白板单独获胜；天使没有夜间行动。
+身份配置：5人起加入白板；7人起配置2狼；8人起加入天使。
+夜晚规则：投票后，普通拿词玩家私聊选择刀或不刀；狼刀人成功，【平民开刀会自杀！】白板每夜可猜两个词，全部猜中则白板单独获胜；天使没有夜间行动。
+白板出局：被投出后可在群内发送“卧底猜词 词语1 词语2”猜一次（顺序不限），限时2分钟，全部猜中则单独获胜；猜错、发送“卧底猜词 放弃”或超时后继续结算。
 胜负规则：所有狼出局则平民阵营胜；存活狼数达到其他存活人数时狼人阵营胜。
 提示：开局前请先私聊机器人任意消息，确保机器人能发词。
 
@@ -172,19 +174,11 @@ func init() {
 
 	registerWordCommands()
 	registerNightCommands()
+	registerBlankLastGuessCommands()
 }
 
 func startGame(ctx *zero.Ctx) {
-	if err := rooms.canBegin(ctx.Event.GroupID, ctx.Event.UserID); err != nil {
-		sendError(ctx, err)
-		return
-	}
-	pair, err := wordDB.randomPair()
-	if err != nil {
-		sendError(ctx, err)
-		return
-	}
-	g, secrets, err := rooms.begin(ctx.Event.GroupID, ctx.Event.UserID, pair)
+	g, secrets, err := rooms.begin(ctx.Event.GroupID, ctx.Event.UserID, wordDB.randomPair)
 	if err != nil {
 		sendError(ctx, err)
 		return
@@ -233,8 +227,9 @@ func startGame(ctx *zero.Ctx) {
 	})
 	ctx.SendChain(
 		message.Text("发词完成！", roleSetupText(len(secrets)), "\n第1轮描述顺序：\n", numberedNames(orderNames), "\n请 "),
-		message.At(firstID), message.Text(" 先发送“卧底描述 你的描述”。"),
+		message.At(firstID), message.Text(" 先发送“卧底描述 你的描述”（限时2分钟）。"),
 	)
+	scheduleCurrentDescriptionTimeout(ctx, ctx.Event.GroupID, g)
 }
 
 func handleClue(ctx *zero.Ctx) {
@@ -244,13 +239,17 @@ func handleClue(ctx *zero.Ctx) {
 		nextName     string
 		voting       bool
 		voteProgress string
+		archives     []clueArchive
+		room         *game
 	)
 	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+		room = g
 		var err error
 		nextID, voting, err = g.describe(ctx.Event.UserID, clue)
 		if err == nil && voting {
 			voted, pending := g.voteProgress()
 			voteProgress = formatVoteProgress(g, voted, pending)
+			archives = g.clueArchives(true)
 		}
 		if nextID != 0 && g.Players[nextID] != nil {
 			nextName = g.Players[nextID].Name
@@ -266,13 +265,25 @@ func handleClue(ctx *zero.Ctx) {
 		return
 	}
 	if voting {
-		ctx.SendChain(message.Text("本轮描述完毕，进入投票阶段。所有存活玩家请发送“卧底投票 @玩家”；可以改票，以最后一票为准。\n", voteProgress))
+		scheduleVotingTimeout(ctx, room)
+		sendClueArchives(ctx, ctx.Event.GroupID, archives)
+		ctx.SendChain(message.Text("本轮描述完毕，进入投票阶段（限时3分钟，超时未投视为弃票）。所有存活玩家请发送“卧底投票 @玩家”或“卧底投票 弃票”；可以改票，以最后一票为准。\n", voteProgress))
 		return
 	}
-	ctx.SendChain(message.Text("描述已记录，下一位请 "), message.At(nextID), message.Text("（", nextName, "）描述。"))
+	ctx.SendChain(message.Text("描述已记录，下一位请 "), message.At(nextID), message.Text("（", nextName, "）描述（限时2分钟）。"))
+	scheduleCurrentDescriptionTimeout(ctx, ctx.Event.GroupID, room)
 }
 
 func handleVote(ctx *zero.Ctx) {
+	// Ignore closed ballots before parsing targets or sending any archive/reply.
+	accepting := false
+	_ = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+		accepting = g.acceptsVote(time.Now())
+		return nil
+	})
+	if !accepting {
+		return
+	}
 	matches := ctx.State["regex_matched"].([]string)
 	target, err := voteTarget(matches)
 	if err != nil {
@@ -280,18 +291,31 @@ func handleVote(ctx *zero.Ctx) {
 		return
 	}
 
+	processVote(ctx, target, nil, time.Time{})
+}
+
+// processVote shares settlement and announcements between player votes and the timer.
+func processVote(ctx *zero.Ctx, target int64, expected *game, deadline time.Time) {
 	var (
 		result         voteResult
 		eliminatedName string
 		tieNames       []string
 		finalSummary   string
 		voteProgress   string
+		archives       []clueArchive
 		room           *game
 	)
-	err = rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
+	err := rooms.withRoom(ctx.Event.GroupID, func(g *game) error {
 		room = g
 		var voteErr error
-		result, voteErr = g.vote(ctx.Event.UserID, target)
+		if expected != nil {
+			if g != expected {
+				return errVoteIgnored
+			}
+			result, voteErr = g.expireVoting(deadline, time.Now())
+		} else {
+			result, voteErr = g.vote(ctx.Event.UserID, target)
+		}
 		if voteErr != nil {
 			return voteErr
 		}
@@ -301,6 +325,9 @@ func handleVote(ctx *zero.Ctx) {
 		for _, id := range result.Tie {
 			tieNames = append(tieNames, g.Players[id].Name)
 		}
+		if len(result.Tie) > 0 {
+			archives = g.clueArchives(true)
+		}
 		if result.Winner != "" {
 			finalSummary = revealSummary(g, result.Reveal)
 		}
@@ -308,20 +335,45 @@ func handleVote(ctx *zero.Ctx) {
 		return nil
 	})
 	if err != nil {
+		if expected != nil || err == errVoteIgnored || err == errRoomNotFound {
+			return
+		}
 		sendError(ctx, err)
 		return
 	}
 
+	if expected != nil {
+		ctx.SendChain(message.Text("投票限时3分钟已到，按已收到的票结算，未投票玩家视为弃票。"))
+	}
 	if !result.Complete {
 		action := "投票已记录"
-		if result.Changed {
+		if target == 0 {
+			action = "弃票已记录"
+		}
+		if result.Changed && target == 0 {
+			action = "已改为弃票"
+		} else if result.Changed {
 			action = "改票成功"
 		}
 		ctx.SendChain(message.Text(action, "（", result.VotesCast, "/", result.VotesNeeded, "）\n", voteProgress))
 		return
 	}
 	if len(result.Tie) > 0 {
-		ctx.SendChain(message.Text("本轮平票：", strings.Join(tieNames, "、"), "。请所有存活玩家重新投票，本轮只能投给以上候选人。\n", voteProgress))
+		scheduleVotingTimeout(ctx, room)
+		sendClueArchives(ctx, ctx.Event.GroupID, archives)
+		ctx.SendChain(message.Text("本轮平票：", strings.Join(tieNames, "、"), "。请所有存活玩家重新投票（限时3分钟），本轮只能投给以上候选人或弃票。\n", voteProgress))
+		return
+	}
+	if result.NoElimination {
+		ctx.SendChain(message.Text("本轮无有效候选票，无人被投出。\n天黑请闭眼，机器人正在私聊本夜可行动的玩家。"))
+		startNight(ctx, ctx.Event.GroupID, room, result.NightActors)
+		return
+	}
+	if result.BlankLastGuess {
+		scheduleBlankLastGuessTimeout(ctx, room)
+		ctx.SendChain(message.At(result.Eliminated.ID), message.Text(
+			"（", eliminatedName, "）被投出，身份是白板。\n你有一次在本群猜词的机会（限时2分钟）：卧底猜词 词语1 词语2（顺序不限）。\n同时猜中平民词和狼人词即可单独获胜；猜错、发送“卧底猜词 放弃”或超时后继续结算。",
+		))
 		return
 	}
 	if result.Winner != "" {
@@ -373,6 +425,9 @@ func handleStatus(ctx *zero.Ctx) {
 		}
 		if g.Phase == phaseNight {
 			fmt.Fprintf(&b, "\n夜间行动进度：%d/%d", g.nightActionsCast(), g.nightActionsNeeded())
+		}
+		if g.Phase == phaseBlankLastGuess {
+			fmt.Fprintf(&b, "\n等待被投出的白板%s在群内猜词（限时2分钟）：卧底猜词 词语1 词语2；或发送“卧底猜词 放弃”。", g.Players[g.BlankID].Name)
 		}
 		text = b.String()
 		return nil

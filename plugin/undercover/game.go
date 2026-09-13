@@ -11,12 +11,15 @@ import (
 )
 
 const (
-	minPlayers   = 3
-	maxPlayers   = 12
-	maxClueRunes = 80
+	votingTimeout          = 3 * time.Minute
+	minPlayers             = 3
+	maxPlayers             = 12
+	maxClueRunes           = 80
+	descriptionTurnTimeout = 2 * time.Minute
 )
 
 var (
+	errVoteIgnored      = errors.New("投票已截止或当前不接受投票")
 	errRoomExists       = errors.New("本群已经有谁是卧底房间了")
 	errRoomNotFound     = errors.New("本群还没有谁是卧底房间，请先发送“创建卧底”")
 	errGameStarted      = errors.New("游戏已经开始，无法加入或退出")
@@ -26,12 +29,10 @@ var (
 	errRoomFull         = errors.New("房间已满，最多支持12人")
 	errNotEnoughPlayers = errors.New("至少需要3名玩家才能开始")
 	errNotDescribing    = errors.New("现在不是描述阶段")
-	errNotVoting        = errors.New("现在不是投票阶段")
 	errNotNight         = errors.New("现在不是夜晚行动阶段")
 	errNoNightAction    = errors.New("你本夜没有行动资格")
 	errNightActionUsed  = errors.New("你本夜已经行动过了")
 	errPlayerOut        = errors.New("你已经出局，不能继续操作")
-	errSelfVote         = errors.New("不能投票给自己")
 	errSelfAttack       = errors.New("不能刀自己")
 	errInvalidTarget    = errors.New("目标不是本局存活玩家")
 	errNotYourTurn      = errors.New("还没轮到你描述")
@@ -46,6 +47,7 @@ const (
 	phaseVoting
 	phaseNight
 	phaseFinished
+	phaseBlankLastGuess
 )
 
 func (p phase) String() string {
@@ -62,6 +64,8 @@ func (p phase) String() string {
 		return "夜晚行动"
 	case phaseFinished:
 		return "已结束"
+	case phaseBlankLastGuess:
+		return "白板出局猜词"
 	default:
 		return "未知"
 	}
@@ -115,11 +119,18 @@ type elimination struct {
 	Role playerRole
 }
 
-// clueRecord 保存一名玩家在某轮提交的有效描述，用于下一轮开始时生成群聊记录。
+// clueRecord 保存一名玩家在某轮提交的有效描述或超时状态，用于生成群聊记录。
 type clueRecord struct {
 	PlayerID   int64
 	PlayerName string
 	Text       string
+	TimedOut   bool
+}
+
+// clueArchive 保存一整轮的描述和超时记录。历史记录保留到本局结束，供后续轮次和投票前回放。
+type clueArchive struct {
+	Round int
+	Clues []clueRecord
 }
 
 type gameReveal struct {
@@ -131,17 +142,19 @@ type gameReveal struct {
 }
 
 type voteResult struct {
-	Complete    bool
-	Changed     bool
-	VotesCast   int
-	VotesNeeded int
-	Voted       []int64
-	Pending     []int64
-	Tie         []int64
-	Eliminated  elimination
-	Winner      string
-	NightActors []int64
-	Reveal      gameReveal
+	Complete       bool
+	Changed        bool
+	NoElimination  bool
+	BlankLastGuess bool
+	VotesCast      int
+	VotesNeeded    int
+	Voted          []int64
+	Pending        []int64
+	Tie            []int64
+	Eliminated     elimination
+	Winner         string
+	NightActors    []int64
+	Reveal         gameReveal
 }
 
 type nightResult struct {
@@ -152,30 +165,33 @@ type nightResult struct {
 	Killed        []elimination
 	Winner        string
 	NextDescriber int64
-	ClueRound     int
-	Clues         []clueRecord
 	Reveal        gameReveal
 }
 
 type game struct {
-	HostID         int64
-	Players        map[int64]*player
-	JoinOrder      []int64
-	Order          []int64
-	Phase          phase
-	Round          int
-	Turn           int
-	RoundClues     []clueRecord
-	Votes          map[int64]int64
-	VoteTargets    map[int64]struct{}
-	NightActions   map[int64]int64 // 0 表示主动选择“不刀”
-	BlankActed     bool            // 白板本夜已经猜词或主动放弃
-	CivilianWord   string
-	UndercoverWord string
-	WolfIDs        []int64
-	BlankID        int64
-	AngelID        int64
-	UpdatedAt      time.Time
+	HostID              int64
+	Players             map[int64]*player
+	JoinOrder           []int64
+	Order               []int64
+	Phase               phase
+	Round               int
+	Turn                int
+	DescriptionTurns    int
+	DescriptionDeadline time.Time
+	RoundClues          []clueRecord
+	ClueHistory         []clueArchive
+	Votes               map[int64]int64
+	VoteDeadline        time.Time
+	VoteTargets         map[int64]struct{}
+	NightActions        map[int64]int64 // 0 表示主动选择“不刀”
+	BlankActed          bool            // 白板本夜已经猜词或主动放弃
+	BlankGuessDeadline  time.Time       // 白板被投出后在群内猜词的截止时间
+	CivilianWord        string
+	UndercoverWord      string
+	WolfIDs             []int64
+	BlankID             int64
+	AngelID             int64
+	UpdatedAt           time.Time
 }
 
 func newGame(hostID int64, hostName string) *game {
@@ -251,7 +267,10 @@ func (g *game) begin(requester int64, pair wordPair) ([]secret, error) {
 	g.assignRoles()
 	g.Round = 1
 	g.Turn = 0
+	g.DescriptionTurns = 0
+	g.DescriptionDeadline = time.Time{}
 	g.RoundClues = nil
+	g.ClueHistory = nil
 	g.Phase = phaseDealing
 	g.Votes = make(map[int64]int64)
 	g.VoteTargets = nil
@@ -287,7 +306,7 @@ func (g *game) assignRoles() {
 	wolfCount := 1
 	hasBlank := len(ids) >= 5
 	hasAngel := len(ids) >= 8
-	if hasAngel {
+	if len(ids) >= 7 {
 		wolfCount = 2
 	}
 	for _, p := range g.Players {
@@ -317,6 +336,7 @@ func (g *game) completeDeal() error {
 		return errors.New("发词阶段已经结束")
 	}
 	g.Phase = phaseDescribing
+	g.startDescriptionTimer()
 	g.touch()
 	return nil
 }
@@ -330,7 +350,10 @@ func (g *game) cancelDeal() error {
 	g.Phase = phaseLobby
 	g.Round = 0
 	g.Turn = 0
+	g.DescriptionTurns = 0
+	g.DescriptionDeadline = time.Time{}
 	g.RoundClues = nil
+	g.ClueHistory = nil
 	g.Votes = nil
 	g.VoteTargets = nil
 	g.NightActions = nil
@@ -371,8 +394,8 @@ func (g *game) describe(id int64, clue string) (next int64, voting bool, err err
 		return id, false, fmt.Errorf("描述不能超过%d个字", maxClueRunes)
 	}
 	for _, word := range p.Words {
-		if strings.Contains(strings.ToLower(clue), strings.ToLower(word)) {
-			return id, false, errors.New("描述中不能直接包含你看到的词语")
+		if strings.ContainsAny(strings.ToLower(clue), strings.ToLower(word)) {
+			return id, false, errors.New("描述中包含你看到的词语中的字，请撤回这条消息，并重新发送“卧底描述 你的描述”")
 		}
 	}
 
@@ -381,24 +404,50 @@ func (g *game) describe(id int64, clue string) (next int64, voting bool, err err
 		PlayerName: p.Name,
 		Text:       clue,
 	})
-	// Turn is the current position in Order, not the number of players that have
-	// described this round. Later rounds may start from the middle of Order, so
-	// advance it circularly and use RoundClues to decide when everyone has spoken.
-	g.Turn = (g.Turn + 1) % len(g.Order)
-	g.touch()
-	if len(g.RoundClues) == len(g.Order) {
+	return g.advanceDescription()
+}
+
+// skipDescription skips the current player's description when their turn times out.
+// expectedRound and expectedPlayer make callbacks from an earlier turn harmless.
+func (g *game) skipDescription(expectedRound int, expectedPlayer int64) (next int64, voting bool, skipped int64, ok bool) {
+	if g.Phase != phaseDescribing || g.Round != expectedRound || g.currentDescriber() != expectedPlayer {
+		return 0, false, 0, false
+	}
+	skipped = expectedPlayer
+	g.RoundClues = append(g.RoundClues, clueRecord{
+		PlayerID:   skipped,
+		PlayerName: g.Players[skipped].Name,
+		TimedOut:   true,
+	})
+	next, voting, _ = g.advanceDescription()
+	return next, voting, skipped, true
+}
+
+func (g *game) advanceDescription() (next int64, voting bool, err error) {
+	g.DescriptionTurns++
+	if g.DescriptionTurns == len(g.Order) {
 		g.Phase = phaseVoting
+		g.VoteDeadline = time.Now().Add(votingTimeout)
 		g.Turn = 0
+		g.DescriptionDeadline = time.Time{}
 		g.Votes = make(map[int64]int64)
+		g.touch()
 		return 0, true, nil
 	}
+	g.Turn = (g.Turn + 1) % len(g.Order)
+	g.startDescriptionTimer()
+	g.touch()
 	return g.Order[g.Turn], false, nil
+}
+
+func (g *game) startDescriptionTimer() {
+	g.DescriptionDeadline = time.Now().Add(descriptionTurnTimeout)
 }
 
 func (g *game) vote(voter, target int64) (voteResult, error) {
 	result := voteResult{VotesNeeded: len(g.Order)}
-	if g.Phase != phaseVoting {
-		return result, errNotVoting
+	if !g.acceptsVote(time.Now()) {
+		return result, errVoteIgnored
 	}
 	voterPlayer, ok := g.Players[voter]
 	if !ok {
@@ -407,16 +456,15 @@ func (g *game) vote(voter, target int64) (voteResult, error) {
 	if !voterPlayer.Alive {
 		return result, errPlayerOut
 	}
-	if voter == target {
-		return result, errSelfVote
-	}
-	targetPlayer, ok := g.Players[target]
-	if !ok || !targetPlayer.Alive {
-		return result, errInvalidTarget
-	}
-	if len(g.VoteTargets) > 0 {
-		if _, ok := g.VoteTargets[target]; !ok {
-			return result, errors.New("平票重投时只能投给候选玩家")
+	if target != 0 {
+		targetPlayer, ok := g.Players[target]
+		if !ok || !targetPlayer.Alive {
+			return result, errInvalidTarget
+		}
+		if len(g.VoteTargets) > 0 {
+			if _, ok := g.VoteTargets[target]; !ok {
+				return result, errors.New("平票重投时只能投给候选玩家或弃票")
+			}
 		}
 	}
 	_, result.Changed = g.Votes[voter]
@@ -428,13 +476,31 @@ func (g *game) vote(voter, target int64) (voteResult, error) {
 		return result, nil
 	}
 
+	return g.resolveVoting(result)
+}
+
+func (g *game) resolveVoting(result voteResult) (voteResult, error) {
+	g.VoteDeadline = time.Time{}
+	g.touch()
 	counts := make(map[int64]int)
 	maxVotes := 0
 	for _, votedID := range g.Votes {
+		if votedID == 0 {
+			continue
+		}
 		counts[votedID]++
 		if counts[votedID] > maxVotes {
 			maxVotes = counts[votedID]
 		}
+	}
+	if maxVotes == 0 {
+		result.Complete = true
+		result.NoElimination = true
+		g.Phase = phaseNight
+		g.NightActions = make(map[int64]int64)
+		g.BlankActed = false
+		result.NightActors = g.nightActors()
+		return result, nil
 	}
 	for _, id := range g.Order {
 		if counts[id] == maxVotes {
@@ -442,6 +508,7 @@ func (g *game) vote(voter, target int64) (voteResult, error) {
 		}
 	}
 	if len(result.Tie) > 1 {
+		g.VoteDeadline = time.Now().Add(votingTimeout)
 		g.Votes = make(map[int64]int64)
 		g.VoteTargets = make(map[int64]struct{}, len(result.Tie))
 		for _, id := range result.Tie {
@@ -458,17 +525,28 @@ func (g *game) vote(voter, target int64) (voteResult, error) {
 	result.Tie = nil
 	result.Eliminated = elimination{ID: eliminated, Role: g.Players[eliminated].Role}
 	g.eliminate(eliminated)
+	if result.Eliminated.Role == roleBlank {
+		g.Phase = phaseBlankLastGuess
+		g.BlankGuessDeadline = time.Now().Add(blankLastGuessTimeout)
+		result.BlankLastGuess = true
+		return result, nil
+	}
+	return g.continueAfterElimination(result), nil
+}
+
+// continueAfterElimination 在出局及白板的最后猜词机会结算后检查胜负，再进入夜晚。
+func (g *game) continueAfterElimination(result voteResult) voteResult {
 	if winner := g.winner(); winner != "" {
 		g.finish(&result.Reveal)
 		result.Winner = winner
-		return result, nil
+		return result
 	}
 
 	g.Phase = phaseNight
 	g.NightActions = make(map[int64]int64)
 	g.BlankActed = false
 	result.NightActors = g.nightActors()
-	return result, nil
+	return result
 }
 
 func (g *game) nightAction(actor, target int64) (nightResult, error) {
@@ -597,11 +675,14 @@ func (g *game) resolveNight(force bool) (nightResult, error) {
 		return result, nil
 	}
 
+	g.ClueHistory = append(g.ClueHistory, clueArchive{
+		Round: g.Round,
+		Clues: append([]clueRecord(nil), g.RoundClues...),
+	})
 	g.Round++
-	result.ClueRound = g.Round - 1
-	result.Clues = append([]clueRecord(nil), g.RoundClues...)
 	g.RoundClues = nil
 	g.Phase = phaseDescribing
+	g.DescriptionTurns = 0
 	g.NightActions = nil
 	g.BlankActed = false
 	g.Votes = make(map[int64]int64)
@@ -617,6 +698,7 @@ func (g *game) resolveNight(force bool) (nightResult, error) {
 		}
 	}
 	result.NextDescriber = g.Order[g.Turn]
+	g.startDescriptionTimer()
 	g.touch()
 	return result, nil
 }
@@ -717,6 +799,25 @@ func (g *game) voteProgress() (voted, pending []int64) {
 		}
 	}
 	return voted, pending
+}
+
+// clueArchives 返回可安全地在房间锁外发送的发言记录副本。
+// includeCurrent 用于投票前，把刚完成的本轮发言也包含进来。
+func (g *game) clueArchives(includeCurrent bool) []clueArchive {
+	archives := make([]clueArchive, 0, len(g.ClueHistory)+1)
+	for _, archive := range g.ClueHistory {
+		archives = append(archives, clueArchive{
+			Round: archive.Round,
+			Clues: append([]clueRecord(nil), archive.Clues...),
+		})
+	}
+	if includeCurrent && len(g.RoundClues) > 0 {
+		archives = append(archives, clueArchive{
+			Round: g.Round,
+			Clues: append([]clueRecord(nil), g.RoundClues...),
+		})
+	}
+	return archives
 }
 
 func (g *game) expired(now time.Time) bool {

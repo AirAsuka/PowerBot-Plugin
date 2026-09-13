@@ -36,8 +36,15 @@ const FishLimit = 100
 // StorePoleLimit 商店可收购鱼竿条目上限
 const StorePoleLimit = 25
 
+const (
+	dailyDiamondPoleDuration   int64 = -1
+	dailyDiamondPolePrice            = 10000
+	dailyDiamondPoleStockLimit       = 10
+	dailyDiamondPoleOther            = "100/0/1/1"
+)
+
 // version 规则版本号
-const version = "5.6.2"
+const version = "5.6.3"
 
 // 各物品信息
 type jsonInfo struct {
@@ -99,6 +106,25 @@ type fishState struct {
 type storeDiscount struct {
 	Name     string
 	Discount int
+}
+
+func currentDateKey(t time.Time) int {
+	year, month, day := t.Date()
+	return year*10000 + int(month)*100 + day
+}
+
+func isDailyDiamondPole(thing store) bool {
+	return thing.Duration == dailyDiamondPoleDuration
+}
+
+func addDailyDiamondPoleStock(number int) int {
+	if number < 0 {
+		number = 0
+	}
+	if number >= dailyDiamondPoleStockLimit {
+		return dailyDiamondPoleStockLimit
+	}
+	return number + 1
 }
 
 // buff状态记录
@@ -634,7 +660,8 @@ func (sql *fishdb) refreshStroeInfo() (ok bool, err error) {
 	lastTime := storeDiscount{}
 	_ = sql.db.Find("stroeDiscount", &lastTime, "WHERE Name = 'lastTime'")
 	refresh := false
-	timeNow := time.Now().Day()
+	now := time.Now()
+	timeNow := currentDateKey(now)
 	if timeNow != lastTime.Discount {
 		lastTime = storeDiscount{
 			Name:     "lastTime",
@@ -702,7 +729,7 @@ func (sql *fishdb) refreshStroeInfo() (ok bool, err error) {
 		_ = sql.db.Insert("store", &thingInfo)
 		// 每天上架1木竿
 		thingInfo = store{
-			Duration: time.Now().Unix(),
+			Duration: now.Unix(),
 			Name:     "初始木竿",
 			Type:     "pole",
 			Price:    priceList["木竿"] + priceList["木竿"]*discountList["木竿"]/100,
@@ -714,6 +741,26 @@ func (sql *fishdb) refreshStroeInfo() (ok bool, err error) {
 			thingInfo.Number = 1
 		}
 		_ = sql.db.Insert("store", &thingInfo)
+
+		// 每天补充1支满耐久、诱钓I、海之眷顾I的钻石竿。
+		// 使用固定主键与玩家寄售的钻石竿区分，未售库存可以累积至10支。
+		thingInfo = store{
+			Duration: dailyDiamondPoleDuration,
+			Name:     "钻石竿",
+			Type:     "pole",
+			Price:    dailyDiamondPolePrice,
+			Other:    dailyDiamondPoleOther,
+		}
+		_ = sql.db.Find("store", &thingInfo, "WHERE Duration = ?", dailyDiamondPoleDuration)
+		thingInfo.Duration = dailyDiamondPoleDuration
+		thingInfo.Name = "钻石竿"
+		thingInfo.Type = "pole"
+		thingInfo.Price = dailyDiamondPolePrice
+		thingInfo.Other = dailyDiamondPoleOther
+		thingInfo.Number = addDailyDiamondPoleStock(thingInfo.Number)
+		if err = sql.db.Insert("store", &thingInfo); err != nil {
+			return false, err
+		}
 	}
 	return true, nil
 }

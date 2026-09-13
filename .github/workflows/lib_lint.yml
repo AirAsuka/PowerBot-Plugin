@@ -1,4 +1,8 @@
 name: Lint Library
+
+env:
+  GOTOOLCHAIN: local
+
 on:
   workflow_call:
     inputs:
@@ -11,7 +15,7 @@ on:
       go-version:
         required: false
         type: string
-        default: '^1.25'
+        default: '1.24.2'
       fetch-depth:
         required: false
         type: number
@@ -26,12 +30,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go
-        uses: actions/setup-go@master
+        uses: actions/setup-go@v7
         with:
           go-version: "${{ inputs.go-version }}"
+          check-latest: false
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@master
+        uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: ${{ inputs.fetch-depth }}
@@ -43,9 +48,9 @@ jobs:
           go mod tidy
 
       - name: Run Lint
-        uses: golangci/golangci-lint-action@master
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v1.64.8
 
       - name: Commit back
         if: ${{ inputs.commit_back }}
