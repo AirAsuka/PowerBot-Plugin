@@ -179,7 +179,8 @@ var (
 			"- 当前装备概率明细\n" +
 			"- 查看钓鱼规则\n" +
 			"- 禁用钓鱼(管理员)\n" +
-			"- 启用钓鱼(管理员)\n",
+			"- 启用钓鱼(管理员)\n" +
+			"- 重置钓鱼次数 QQ号/全部(超级管理员，全局生效)\n",
 		PublicDataFolder: "McFish",
 	}).ApplySingle(ctxext.DefaultSingle)
 	getdb = fcext.DoOnceOnSuccess(func(ctx *zero.Ctx) bool {
@@ -210,6 +211,27 @@ func groupNotDisabled(ctx *zero.Ctx) bool {
 }
 
 func init() {
+	engine.OnRegex(`^重置钓鱼次数\s+(全部|[0-9]+)$`, zero.SuperUserPermission, getdb).SetBlock(true).Handle(func(ctx *zero.Ctx) {
+		target := ctx.State["regex_matched"].([]string)[1]
+		var uid int64
+		if target != "全部" {
+			var err error
+			uid, err = strconv.ParseInt(target, 10, 64)
+			if err != nil || uid <= 0 {
+				ctx.SendChain(message.Text("请输入有效的QQ号"))
+				return
+			}
+		}
+		if err := dbdata.resetFishTimes(uid); err != nil {
+			ctx.SendChain(message.Text("重置钓鱼次数失败：", err))
+			return
+		}
+		if uid == 0 {
+			ctx.SendChain(message.Text("已重置所有用户的今日钓鱼次数（全局生效）"))
+		} else {
+			ctx.SendChain(message.Text("已重置QQ ", uid, " 的今日钓鱼次数（全局生效）"))
+		}
+	})
 	// 禁用钓鱼
 	engine.OnFullMatch("禁用钓鱼", getdb, zero.OnlyGroup, zero.AdminPermission).SetBlock(true).Handle(func(ctx *zero.Ctx) {
 		gid := ctx.Event.GroupID
@@ -305,6 +327,22 @@ func init() {
 		minMap[info.Type] += info.Probability
 	}
 	// }()
+}
+
+// resetFishTimes 清零钓鱼次数；uid 为 0 时重置所有用户。
+func (sql *fishdb) resetFishTimes(uid int64) error {
+	sql.Lock()
+	defer sql.Unlock()
+	if err := sql.db.Create("fishState", &fishState{}); err != nil {
+		return err
+	}
+	query := "UPDATE fishState SET Fish = 0"
+	if uid != 0 {
+		_, err := sql.db.Exec(query+" WHERE ID = ?", uid)
+		return err
+	}
+	_, err := sql.db.Exec(query)
+	return err
 }
 
 // 更新上限信息

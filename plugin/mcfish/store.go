@@ -181,12 +181,14 @@ func init() {
 		}
 
 		var pice int
+		hasEnchantment := false
 		if strings.Contains(thingName, "竿") || thingName == "三叉戟" {
 			poleInfo := strings.Split(articles[index].Other, "/")
 			durable, _ := strconv.Atoi(poleInfo[0])
 			maintenance, _ := strconv.Atoi(poleInfo[1])
 			induceLevel, _ := strconv.Atoi(poleInfo[2])
 			favorLevel, _ := strconv.Atoi(poleInfo[3])
+			hasEnchantment = induceLevel > 0 || favorLevel > 0
 			pice = (priceList[thingName] - (durationList[thingName] - durable) - maintenance*2 +
 				induceLevel*600*discountList["诱钓"]/100 +
 				favorLevel*1800*discountList["海之眷顾"]/100) * discountList[thingName] / 100
@@ -281,7 +283,7 @@ func init() {
 		}
 		newCommodity := store{}
 		if strings.Contains(thing.Name, "竿") || thing.Name == "三叉戟" {
-			if pice >= priceList[thing.Name]*2 { // 无附魔的不要
+			if hasEnchantment { // 有任意附魔即可上架
 				newCommodity = store{
 					Duration: time.Now().Unix(),
 					Type:     "pole",
