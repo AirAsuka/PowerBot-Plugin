@@ -17,6 +17,7 @@ import (
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
+	log "github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
@@ -75,9 +76,19 @@ func init() {
 		keyword := ctx.State["matched_keyword"].(string)
 		RWMutex.RLock()
 		imagePath, ok := keywordData[keyword]
+		var img message.Segment
+		var err error
+		if ok {
+			img, err = readImage(imagePath)
+		}
 		RWMutex.RUnlock()
 		if ok {
-			ctx.SendChain(message.Image("file:///" + imagePath))
+			if err != nil {
+				log.Warnf("[keywordimg] 读取关键词 %q 的图片失败: %v", keyword, err)
+				ctx.SendChain(message.Text("关键词 [", keyword, "] 的图片读取失败，请管理员重新添加"))
+				return
+			}
+			ctx.SendChain(img)
 		}
 	})
 
@@ -106,16 +117,11 @@ func init() {
 
 			filename := fmt.Sprintf("%s.%s", keyword, format)
 			localPath := filepath.Join(imagesDir, filename)
-			os.WriteFile(localPath, picData, 0644)
-			fmt.Println("[keywordimg] 保存到:", localPath, "大小:", len(picData))
-
-			RWMutex.Lock()
-			if oldPath, ok := keywordData[keyword]; ok {
-				os.Remove(oldPath)
+			if err := storeImage(keyword, localPath, picData); err != nil {
+				log.Warnf("[keywordimg] 保存关键词 %q 的图片失败: %v", keyword, err)
+				ctx.SendChain(message.Text("图片保存失败，请稍后重试"))
+				return
 			}
-			keywordData[keyword] = localPath
-			saveData()
-			RWMutex.Unlock()
 
 			ctx.Send(message.ReplyWithMessage(id, message.Text("关键词 [", keyword, "] 添加成功")))
 		})
@@ -152,6 +158,30 @@ func init() {
 		}
 		ctx.SendChain(message.Text(list.String()))
 	})
+}
+
+// readImage 发送图片内容，避免依赖 OneBot 端能够访问机器人的本地路径。
+func readImage(imagePath string) (message.Segment, error) {
+	data, err := os.ReadFile(imagePath)
+	if err != nil {
+		return message.Segment{}, err
+	}
+	return message.ImageBytes(data), nil
+}
+
+func storeImage(keyword, localPath string, data []byte) error {
+	RWMutex.Lock()
+	defer RWMutex.Unlock()
+	if err := os.WriteFile(localPath, data, 0644); err != nil {
+		return err
+	}
+	// 同名同格式时旧路径就是刚写入的文件，不能删除。
+	if oldPath, ok := keywordData[keyword]; ok && oldPath != localPath {
+		os.Remove(oldPath)
+	}
+	keywordData[keyword] = localPath
+	saveData()
+	return nil
 }
 
 // loadData 从文件加载关键词数据
