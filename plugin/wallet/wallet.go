@@ -63,7 +63,12 @@ func init() {
 			today := time.Now().Format("20060102")
 			drawedFile := cachePath + gid + today + "walletRank.png"
 			if file.IsExist(drawedFile) {
-				ctx.SendChain(message.Image("file:///" + file.BOTPATH + "/" + drawedFile))
+				data, err := os.ReadFile(drawedFile)
+				if err != nil {
+					ctx.SendChain(message.Text("ERROR: 读取钱包排名图片失败: ", err))
+					return
+				}
+				ctx.SendChain(message.ImageBytes(data))
 				return
 			}
 			// 无缓存获取群员列表
@@ -137,7 +142,12 @@ func init() {
 				ctx.SendChain(message.Text("ERROR: ", err))
 				return
 			}
-			ctx.SendChain(message.Image("file:///" + file.BOTPATH + "/" + drawedFile))
+			data, err := os.ReadFile(drawedFile)
+			if err != nil {
+				ctx.SendChain(message.Text("ERROR: 读取钱包排名图片失败: ", err))
+				return
+			}
+			ctx.SendChain(message.ImageBytes(data))
 		})
 	en.OnPrefix("设置硬币名称", zero.OnlyToMe, zero.SuperUserPermission).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
