@@ -24,7 +24,6 @@ import (
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/ctxext"
-	"github.com/FloatTech/zbputils/img/pool"
 )
 
 const (
@@ -146,18 +145,16 @@ func init() {
 			digest := md5.Sum(helper.StringToBytes(zipfile + strconv.Itoa(index) + title + text))
 			cachefile := cache + hex.EncodeToString(digest[:])
 
-			err = pool.SendImageFromPool(cachefile, func(cachefile string) error {
-				f, err := os.Create(cachefile)
-				if err != nil {
-					return err
-				}
-				_, err = draw(background, fontdata, title, text, f)
-				_ = f.Close()
+			data, err := cachedImage(cachefile, func(w io.Writer) error {
+				_, err := draw(background, fontdata, title, text, w)
 				return err
-			}, ctxext.Send(ctx))
+			})
 			if err != nil {
 				ctx.SendChain(message.Text("ERROR: ", err))
 				return
+			}
+			if ctx.SendChain(message.ImageBytes(data)).ID() == 0 {
+				ctx.SendChain(message.Text("ERROR: 图片发送失败，请稍后重试"))
 			}
 		})
 }

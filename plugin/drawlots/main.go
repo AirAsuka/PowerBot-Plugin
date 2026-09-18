@@ -119,7 +119,7 @@ func init() {
 						ctx.SendChain(message.Text("ERROR: ", err))
 						return
 					}
-					ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Image("file:///"+picPath))
+					sendLocalImage(ctx, picPath)
 					return
 				}
 			}
@@ -139,7 +139,7 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Image("file:///"+picPath))
+		sendLocalImage(ctx, picPath)
 	})
 
 	en.OnRegex(`^抽(.+)gif签$`).SetBlock(true).Handle(func(ctx *zero.Ctx) {
@@ -153,7 +153,7 @@ func init() {
 			ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Text("这是图包签，请使用\"抽", lotsName, "签\"哦~")))
 			return
 		}
-		ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.Image("file:///"+datapath+"/"+lotsName+".gif")))
+		sendLocalImage(ctx, filepath.Join(datapath, lotsName+".gif"))
 	})
 
 	en.OnRegex(`^看(.+)签$`, zero.UserOrGrpAdmin).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
@@ -173,7 +173,7 @@ func init() {
 			ctx.SendChain(message.Text("ERROR: ", err))
 			return
 		}
-		ctx.Send(message.ReplyWithMessage(id, message.Image("file:///"+picPath)))
+		sendLocalImage(ctx, picPath)
 	})
 
 	en.OnRegex(`^看(.+)gif签$`, zero.UserOrGrpAdmin).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
@@ -188,7 +188,7 @@ func init() {
 			ctx.Send(message.ReplyWithMessage(id, message.Text("这是图包签，请使用\"看", lotsName, "签\"查看哦~")))
 			return
 		}
-		ctx.Send(message.ReplyWithMessage(id, message.Image("file:///"+datapath+"/"+lotsName+".gif")))
+		sendLocalImage(ctx, filepath.Join(datapath, lotsName+".gif"))
 	})
 
 	en.OnRegex(`^加(.+)签.*`, zero.MustProvidePicture).SetBlock(true).Limit(ctxext.LimitByUser).Handle(func(ctx *zero.Ctx) {
@@ -358,7 +358,7 @@ func getList() (list map[string]info, err error) {
 }
 
 func randFile(path string, indexMax int) (string, error) {
-	picPath := datapath + path
+	picPath := filepath.Join(datapath, path)
 	files, err := os.ReadDir(picPath)
 	if err != nil {
 		return "", err
@@ -376,4 +376,16 @@ func randFile(path string, indexMax int) (string, error) {
 		return picPath + "/" + drawFile.Name(), err
 	}
 	return "", errors.New("图包[" + path + "]不存在签内容！")
+}
+
+// sendLocalImage 传输图片内容，兼容 OneBot 与插件不共享文件系统的部署。
+func sendLocalImage(ctx *zero.Ctx, path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		ctx.SendChain(message.Text("ERROR: ", err))
+		return
+	}
+	if ctx.SendChain(message.Reply(ctx.Event.MessageID), message.ImageBytes(data)).ID() == 0 {
+		ctx.SendChain(message.Text("ERROR: 图片发送失败，请稍后重试"))
+	}
 }
